@@ -1,0 +1,35 @@
+{
+  "lr": 0.0001,
+  "exp": "test/partition_emb_box_250",
+  "logf": "logs",
+  "outf": "checkpoint",
+  "nepoch": 250,
+  "device": "cuda",
+  "path2sdf": "./SGFRONT/GT/DEEPSDF_reconstruction",
+  "large": false,
+  "batchSize": 8,
+  "with_SDF": false,
+  "with_CLIP": true,
+  "with_feats": false,
+  "with_changes": true,
+  "dataset": "test/partition_emb_250_GT",
+  "residual": true,
+  "network_type": "v2_box",
+  "manualSeed": 919,
+  "loadmodel": false,
+  "weight_D_box": 0.1,
+  "auxlr": 0.0001,
+  "num_box_params": 6,
+  "data_list": "test/partition_emb_250_GT/250_combined.txt",
+  "use_unit_box": true,
+  "unit_box_mean": [
+    10.24674785234899,
+    2.692383288590609,
+    9.163012751677849
+  ],
+  "unit_box_std": [
+    3.861946512003057,
+    0.2545714503002589,
+    3.2190348745814514
+  ]
+}
