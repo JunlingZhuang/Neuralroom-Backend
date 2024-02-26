@@ -207,6 +207,84 @@ def rationalize_box_params(boxes_pred_den,angles_pred,unit_box_mean,unit_box_std
 
     return box_points, denormalized_boxes,angles_pred
 
+
+def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test/partition_emb_box_250/args.json",args=None,model=None,train_dataset=None):
+    '''
+    input queried index at dataset, and the custom unit_box(optional), generate the unit mesh
+    '''
+    bbox_file = os.path.join(args["dataset"], "cat_jid_all.json")
+    with open(bbox_file, "r") as read_file:
+        box_data = json.load(read_file)
+
+    # TODO: EXPORT UNIT BOX NORMALIZATION PARAM INTO THE TEXT
+    box_file = os.path.join(args["dataset"], "boxes_centered_stats_all.txt")
+    if "unit_box_mean" not in args:
+        unit_box_mean = train_dataset.unit_box_mean
+        unit_box_std = train_dataset.unit_box_std
+    else:
+        unit_box_mean = np.array(args["unit_box_mean"])
+        unit_box_std = np.array(args["unit_box_std"])
+        obj_idx2name = {v: k for k, v in train_dataset.classes.items()}
+        rel_idx2name = {k + 1: v for k, v in enumerate(train_dataset.relationships)}
+        rel_idx2name[0] = "belong to"
+        device = args['device']
+
+    # parse data
+    data = train_dataset[queried_idx]
+    dec_objs_grained = data["decoder"]["objs_grained"]
+    dec_objs = data["decoder"]["objs"]
+    dec_triples = data["decoder"]["triples"]
+    dec_unit_box = data["decoder"]["unit_box"]
+    obj_to_pidx = data["decoder"]["obj_to_pidx"]
+    dec_objs, dec_triples, dec_unit_box = (
+        dec_objs.to(device),
+        dec_triples.to(device),
+        dec_unit_box.to(device),
+    )
+
+    boxes_pred_den, angles_pred,dec_unit_box = predict_boxes_and_angles(
+        is_custom_boundary= unit_box is not None,  # True if custom bbox 
+        device="cpu",
+        random_seed=852,
+        model=model,
+        unit_box=unit_box,
+        args=args,
+        data=data,
+        unit_box_mean=unit_box_mean,
+        unit_box_std=unit_box_std,
+        box_file = box_file
+    )
+    box_points, denormalized_boxes, angles_pred = rationalize_box_params(
+        boxes_pred_den, angles_pred, unit_box_mean, unit_box_std, dec_unit_box, data
+    )
+    detailed_obj_class = train_dataset.vocab["full_object_idx_to_name_grained"]
+    sdf_dir = "DEEPSDF_reconstruction/Meshes"
+    # get furniture category
+    fur_cat_file = args["dataset"] + "/cat_jid_all.json"
+    with open(fur_cat_file, "r") as file:
+        fur_cat = json.load(file)
+    # trimesh mesh object
+    meshes = create_scene_meshes(
+        dec_objs_grained,
+        obj_to_pidx,
+        denormalized_boxes,
+        angles_pred,
+        detailed_obj_class,
+        fur_cat,
+        sdf_dir,
+        retrieve_sdf = False, # export box only meshes
+    )
+    exp_dir = os.path.join(args['exp'],'mesh')
+    mesh_name = f'{data["scan_id"]}.obj'
+    exp_path = os.path.join(exp_dir,mesh_name)
+    if not os.path.exists(exp_dir):
+        os.makedirs(exp_dir,exist_ok = True)
+    export_scene_meshes(meshes,dec_objs,obj_idx2name,exp_path)
+    return exp_path
+    
+
+
+
 if __name__ == "__main__":
     
     # inputs
