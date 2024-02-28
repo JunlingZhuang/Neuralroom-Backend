@@ -1,7 +1,7 @@
 import subprocess
 import re
 import json
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pathlib import Path
 
@@ -28,10 +28,19 @@ def test():
 def happy():
     return 'Happy!'
 
-@app.route('/generate')
+@app.route('/generate',methods=['POST'])
 def generate_model():
     print("generate_model")
-    model_file_path = generate_queried_unit_mesh(queried_idx=0,args_location="./test/partition_emb_box_250/args.json",args=args,model=model,train_dataset=dataset)
+    data = request.get_json()
+    length = data.get('length')
+    height = data.get('height')
+    width = data.get('width')
+    # set length, height, width to float if not None
+    length = float(length) if length is not None else 0.0
+    height = float(height) if height is not None else 0.0
+    width = float(width) if width is not None else 0.0
+    print(length,height,width)    
+    model_file_path = generate_queried_unit_mesh(queried_idx=0,unit_box = [length,height,width],args_location="./test/partition_emb_box_250/args.json",args=args,model=model,train_dataset=dataset)
     if model_file_path:
         try:
             with open(model_file_path, 'r') as model_file:
