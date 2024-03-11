@@ -48,7 +48,6 @@ def load_ckpt(ckpt):
     return state_dict
 
 
-# TODO: delete room_type
 # TODO: simplify the categories
 # TODO: check if need to change with_feats into with_SDF_feats
 
@@ -75,13 +74,11 @@ class DatasetSceneGraph(data.Dataset):
         large=False,
         recompute_feats=False,
         recompute_clip=False,
-        room_type=None,
         class_choice=None,
         data_list=None,
         device="cuda",
     ):
         # Basic setting
-        self.room_type = room_type
         self.seed = seed
         self.with_feats = with_feats  # for SDF
         self.with_CLIP = with_CLIP
@@ -131,9 +128,8 @@ class DatasetSceneGraph(data.Dataset):
             raise EnvironmentError("Unsupported Operating System")
 
         # Vocabulary and Category Settings
-        catfile_name = (
-            "classes_{}.txt".format(self.room_type) if self.room_type else "classes.txt"
-        )
+        catfile_name = "classes.txt"
+
         self.catfile = os.path.join(self.root, catfile_name)
         self.cat = {}
         self.vocab = {}
@@ -209,16 +205,15 @@ class DatasetSceneGraph(data.Dataset):
         self,
         file_list,
         mode="train",
-        train_ratio=0.7,
+        train_ratio=0.85,
         val_ratio=0.15,
-        test_ratio=0.15,
         seed=None,
     ):
         """
         Splits a list of files into training, validation, and test sets.
         :return: a list contatining either the train, validation, or test file names.
         """
-        if train_ratio + val_ratio + test_ratio != 1.0:
+        if train_ratio + val_ratio != 1.0:
             raise ValueError("The sum of the ratios must be 1.")
 
         if seed is not None:
@@ -230,31 +225,22 @@ class DatasetSceneGraph(data.Dataset):
 
         num_files = len(shuffled_files)
         num_train = int(num_files * train_ratio)
-        num_val = int(num_files * val_ratio)
 
         # Split the files into training, validation, and test sets
         split_files = {}
         split_files["train"] = shuffled_files[:num_train]
-        split_files["val"] = shuffled_files[num_train : num_train + num_val]
-        split_files["test"] = shuffled_files[num_train + num_val :]
+        split_files["val"] = shuffled_files[num_train:]
 
         return split_files[mode]
 
     def _setup_relationships_and_json(self):
         # Setup JSON files for relationships, objects, and bounding boxes
-        rel_filename = "relationships_{}.json".format(
-            self.room_type if self.room_type else "all"
-        )
+        rel_filename = "relationships_all.json"
         rel_json_file = os.path.join(self.root, rel_filename)
-        box_filename = "obj_boxes_{}.json".format(
-            self.room_type if self.room_type else "all"
-        )
+        box_filename = "obj_boxes_all.json"
         box_json_file = os.path.join(self.root, box_filename)
         self.box_normalized_stats = os.path.join(
-            self.root,
-            "boxes_centered_stats_{}.txt".format(
-                self.room_type if self.room_type else "all"
-            ),
+            self.root, "boxes_centered_stats_all.txt"
         )
         (
             self.relationship_json,
@@ -292,7 +278,7 @@ class DatasetSceneGraph(data.Dataset):
                 if scan_id in scan_list:
                     relationships = []
                     for relationship in scan["relationships"]:
-                        relationship[2] -= 1
+                        relationship[2]
                         relationships.append(
                             relationship
                         )  # TODO: here minus one and in getitem +1, seems redundant
@@ -530,7 +516,7 @@ class DatasetSceneGraph(data.Dataset):
         """
         Parameters:
         - keys : the whole instances ids, a list of int such as [2, 4, 3, 5, 6, 1, 7]
-        - instance2label: a dictionary maoping keys (instance ids) to class label (string), such as {1: 'wardrobe', 2: 'double_bed', 3: 'table', 4: 'cabinet', 5: 'nightstand', 6: 'ceiling_lamp', 7: 'floor'}
+        - instance2label: a dictionary mapping keys (instance ids) to class label (string), such as {1: 'wardrobe', 2: 'double_bed', 3: 'table', 4: 'cabinet', 5: 'nightstand', 6: 'ceiling_lamp', 7: 'floor'}
         - scan_id: scan_id of current data point, a string that is subset of filename.
         - key_to_parent: a dictionary map key to the parent key
         """
@@ -577,7 +563,7 @@ class DatasetSceneGraph(data.Dataset):
                 else:
                     cat_ids_grained.append(scene_class_id)
                 bbox = np.array(self.tight_boxes_json[scan_id][key]["param7"].copy())
-                bbox[3:6] -= np.array(self.tight_boxes_json[scan_id]["scene_center"])
+                # bbox[3:6] -= np.array(self.tight_boxes_json[scan_id]["scene_center"]) #TODO: already normalized, no need to substract
 
                 instances_order.append(key)
                 bins = np.linspace(np.deg2rad(-180), np.deg2rad(180), 24)
@@ -617,9 +603,9 @@ class DatasetSceneGraph(data.Dataset):
         for key in keys:
             if int(key) == 0:
                 continue
-            mask = instance2mask[key] -1
+            mask = instance2mask[key] - 1
             parent_key = key_to_parent[key]
-            parent_mask = instance2mask[parent_key] -1
+            parent_mask = instance2mask[parent_key] - 1
             mask_to_parent[mask] = parent_mask
 
         return (
@@ -691,7 +677,7 @@ class DatasetSceneGraph(data.Dataset):
             if r[0] in instance2mask.keys() and r[1] in instance2mask.keys():
                 subject = instance2mask[r[0]] - 1
                 object = instance2mask[r[1]] - 1
-                predicate = r[2] + 1
+                predicate = r[2]
                 if subject >= 0 and object >= 0:
                     triples.append([subject, predicate, object])
                     if not self.large:
@@ -716,24 +702,45 @@ class DatasetSceneGraph(data.Dataset):
         return triples, words
 
     def add_scene_root_node(
-        self, triples, words, cat_ids, cat_ids_grained, tight_boxes, obj_sdf_list,mask_to_parent
+        self,
+        triples,
+        words,
+        cat_ids,
+        cat_ids_grained,
+        tight_boxes,
+        obj_sdf_list,
+        mask_to_parent,
+        scan_id,
     ):
         scene_idx = len(cat_ids)
         for i, ob in enumerate(cat_ids):
-            triples.append([i, 0, scene_idx])
-            words.append(self.get_key(self.classes, ob) + " " + "in" + " " + "unit")
+            # check if this obj is a room node
+            if mask_to_parent[i] == i:
+                triples.append([i, 0, scene_idx])
+                words.append(
+                    self.get_key(self.classes, ob) + " " + "belong to" + " " + "unit"
+                )
         cat_ids.append(0)  # TODO:check
         cat_ids_grained.append(0)
-        num_objs = len(cat_ids)
-        mask_to_parent.append(num_objs-1)
-        
-        # dummy scene box
-        tight_boxes.append([-1, -1, -1, -1, -1, -1, -1])
+        mask_to_parent.append(scene_idx)
+
+        # unit box
+        unit_box = self.unit_box[scan_id]
+        unit_box = np.concatenate((unit_box, [0.0, 0.0, 0.0, 0]), axis=0)
+        tight_boxes.append(unit_box)
         if self.use_SDF:
             obj_sdf_list.append(
                 torch.zeros((1, self.sdf_res, self.sdf_res, self.sdf_res))
-            )  # _scene_
-        return triples, words, cat_ids, cat_ids_grained, tight_boxes, obj_sdf_list,mask_to_parent
+            )  # _unit_
+        return (
+            triples,
+            words,
+            cat_ids,
+            cat_ids_grained,
+            tight_boxes,
+            obj_sdf_list,
+            mask_to_parent,
+        )
 
     def compute_clip_feats(self, cat_ids, instances_order, words):
         num_cat = len(cat_ids) if not self.use_scene_rels else len(cat_ids) - 1
@@ -767,7 +774,7 @@ class DatasetSceneGraph(data.Dataset):
         clip_feats_rel = clip_feats_in["rel_feats"]
         return clip_feats_ins, clip_feats_rel
 
-    # TODO: add changing room node class
+    # no edge modification
     def prepare_manipulation_output(self, output):
         output["manipulate"] = {}
         if not self.with_changes:
@@ -776,9 +783,10 @@ class DatasetSceneGraph(data.Dataset):
         else:
             if not self.eval:
                 if self.with_changes:
-                    output["manipulate"]["type"] = ["relationship", "addition", "none"][
-                        np.random.randint(3)
-                    ]  # removal is trivial - so only addition and rel change
+                    output["manipulate"]["type"] = ["addition", "none"][
+                        np.random.randint(2)
+                    ]  # removal is trivial , simplified edge type - so only addition
+
                 else:
                     output["manipulate"]["type"] = "none"
                 if output["manipulate"]["type"] == "addition":
@@ -787,12 +795,12 @@ class DatasetSceneGraph(data.Dataset):
                         output["manipulate"]["added"] = node_id
                     else:
                         output["manipulate"]["type"] = "none"
-                elif output["manipulate"]["type"] == "relationship":
-                    rel, pair, suc = self.modify_relship(output["decoder"])
-                    if suc:
-                        output["manipulate"]["relship"] = (rel, pair)
-                    else:
-                        output["manipulate"]["type"] = "none"
+                # elif output["manipulate"]["type"] == "relationship":
+                #     rel, pair, suc = self.modify_relship(output["decoder"])
+                #     if suc:
+                #         output["manipulate"]["relship"] = (rel, pair)
+                #     else:
+                #         output["manipulate"]["type"] = "none"
             else:
                 output["manipulate"]["type"] = self.eval_type
                 if output["manipulate"]["type"] == "addition":
@@ -801,14 +809,14 @@ class DatasetSceneGraph(data.Dataset):
                         output["manipulate"]["added"] = node_id
                     else:
                         return
-                elif output["manipulate"]["type"] == "relationship":
-                    rel, pair, suc = self.modify_relship(
-                        output["decoder"], interpretable=True
-                    )
-                    if suc:
-                        output["manipulate"]["relship"] = (rel, pair)
-                    else:
-                        return
+                # elif output["manipulate"]["type"] == "relationship":
+                #     rel, pair, suc = self.modify_relship(
+                #         output["decoder"], interpretable=True
+                #     )
+                #     if suc:
+                #         output["manipulate"]["relship"] = (rel, pair)
+                #     else:
+                #         return
         return output
 
     def __getitem__(self, index):
@@ -852,7 +860,6 @@ class DatasetSceneGraph(data.Dataset):
             obj_sdf_list,
             mask_to_parent,
         ) = self.process_instances(keys, instance2label, scan_id, key_to_parent)
-        
 
         if self.with_CLIP and os.path.exists(self.clip_feats_path):
             # If precomputed features exist, we simply load them
@@ -875,9 +882,16 @@ class DatasetSceneGraph(data.Dataset):
                 cat_ids_grained,
                 tight_boxes,
                 obj_sdf_list,
-                mask_to_parent
+                mask_to_parent,
             ) = self.add_scene_root_node(
-                triples, words, cat_ids, cat_ids_grained, tight_boxes, obj_sdf_list,mask_to_parent
+                triples,
+                words,
+                cat_ids,
+                cat_ids_grained,
+                tight_boxes,
+                obj_sdf_list,
+                mask_to_parent,
+                scan_id,
             )
         # if features are requested but the files don't exist, we run all loaded pointclouds through clip
         # to compute them and then save them for future usage
@@ -894,13 +908,11 @@ class DatasetSceneGraph(data.Dataset):
         # objs are a list of true class idx that in current split scene
         # triples are (objs idx + true relationship id + objs idx) tuple
 
-        #prepare unit_box
+        # prepare unit_box
         unit_box = self.unit_box[scan_id]
         num_objs = len(cat_ids)
-        unit_box = torch.from_numpy(
-            np.array(unit_box).astype(np.float32)
-        )
-        unit_box = unit_box.unsqueeze(0).repeat(num_objs,1)
+        unit_box = torch.from_numpy(np.array(unit_box).astype(np.float32))
+        unit_box = unit_box.unsqueeze(0).repeat(num_objs, 1)
 
         output = {}
         output["encoder"] = {}
@@ -959,12 +971,10 @@ class DatasetSceneGraph(data.Dataset):
         # TODO: need to modify when consider room nodes
         excluded_classes = [
             "floor",
-            "bathroom",
             "bedroom",
             "diningroom",
             "livingroom",
-            "kitchen",
-            "circulation" ,"wall",
+            "wall",
         ]
         excluded = [
             self.classes[cls] for cls in excluded_classes if cls in self.classes
@@ -988,7 +998,7 @@ class DatasetSceneGraph(data.Dataset):
 
         graph["boxes"] = graph["boxes"][mask]
         graph["unit_box"] = graph["unit_box"][mask]
-        graph['obj_to_pidx'] = graph['obj_to_pidx'][mask]
+        graph["obj_to_pidx"] = graph["obj_to_pidx"][mask]
 
         to_rm_indices = []
         mask_rel = torch.ones(len(graph["triples"]), dtype=torch.bool)
@@ -1247,7 +1257,7 @@ class DatasetSceneGraph(data.Dataset):
             outputs = {
                 "objs": all_objs,
                 "objs_grained": all_objs_grained,
-                "tripltes": all_triples,
+                "triples": all_triples,
                 "boxes": all_boxes,
                 "obj_to_scene": all_obj_to_scene,
                 "triple_to_scene": all_triple_to_scene,
@@ -1291,7 +1301,6 @@ if __name__ == "__main__":
         with_CLIP=True,
         large=False,
         seed=False,
-        room_type="all",
         recompute_clip=False,
     )
     a = dataset[0]
