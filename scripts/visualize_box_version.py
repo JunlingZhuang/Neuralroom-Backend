@@ -292,6 +292,7 @@ def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test
     box_points, denormalized_boxes, angles_pred = rationalize_box_params(
         boxes_pred_den, angles_pred, unit_box_mean, unit_box_std, dec_unit_box, data,adj_rel_idx
     )
+
     detailed_obj_class = train_dataset.vocab["full_object_idx_to_name_grained"]
     sdf_dir = "DEEPSDF_reconstruction/Meshes"
     # get furniture category
@@ -299,7 +300,7 @@ def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test
     with open(fur_cat_file, "r") as file:
         fur_cat = json.load(file)
     # trimesh mesh object
-    meshes = create_scene_meshes(
+    meshes,_,_ = create_scene_meshes(
         dec_objs_grained,
         obj_to_pidx,
         denormalized_boxes,
