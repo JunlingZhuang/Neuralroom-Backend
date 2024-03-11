@@ -13,9 +13,7 @@ from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 import json
 import torch
-from render.lineMesh import LineMesh
 import plotly.graph_objects as go
-from kaleido.scopes.plotly import PlotlyScope
 import plotly.express as px
 import pyrender
 import imageio

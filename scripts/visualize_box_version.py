@@ -85,6 +85,10 @@ def prepare_dataset_and_model(args_location = "test/partition_emb_box_250/args.j
         with_E2=True,
         device=args["device"],
         use_unit_box=args["use_unit_box"],
+        gat_heads=args["gat_heads"] if args["network_type"] == "v3_vox" else None,
+        num_gat_layers=(
+            args["num_gat_layers"] if args["network_type"] == "v3_vox" else None
+        ),
     )
 
 
@@ -116,32 +120,47 @@ def prepare_dataset_and_model(args_location = "test/partition_emb_box_250/args.j
     return args, model, train_dataset, box_data,box_file
 
 
-def predict_boxes_and_angles(is_custom_boundary = False, device='cpu',random_seed = 852,model=None,unit_box = None,args=None,data = None,unit_box_mean = None,unit_box_std = None,box_file=None):
-
-    '''
+def predict_boxes_and_angles(
+    is_custom_boundary=False,
+    device="cpu",
+    random_seed=852,
+    model=None,
+    unit_box=None,
+    args=None,
+    data=None,
+    unit_box_mean=None,
+    unit_box_std=None,
+    box_file=None,
+):
+    """
     if the users do not set custom boundary for the unit, the function will uses original boundary in the training dataset
     input unit_box should be a list
-    '''
+    """
     dec_objs = data["decoder"]["objs"]
     dec_triples = data["decoder"]["triples"]
-    dec_rel_feat = data["decoder"]["rel_feats"]
-    dec_text_feat = data["decoder"]["text_feats"]
+    dec_text_feat = None
+    dec_rel_feat = None
+    if args["with_CLIP"]:
+        dec_rel_feat = data["decoder"]["rel_feats"]
+        dec_text_feat = data["decoder"]["text_feats"]
+        dec_rel_feat = dec_rel_feat.to(device)
+        dec_text_feat = dec_text_feat.to(device)
     dec_unit_box = data["decoder"]["unit_box"]
-    
+
     with torch.no_grad():
         np.random.seed(random_seed)
-    dec_rel_feat = dec_rel_feat.to(device)
-    dec_text_feat = dec_text_feat.to(device)
+
     dec_objs = dec_objs.to(device)
     dec_triples = dec_triples.to(device)
     dec_unit_box = dec_unit_box.to(device)
 
     if is_custom_boundary and unit_box is not None:
-        assert len(unit_box) ==3
+        assert len(unit_box) == 3
         assert unit_box_std is not None
         assert unit_box_mean is not None
-        unit_box = (unit_box  - unit_box_mean)/unit_box_std
-        dec_unit_box[:, :] = torch.tensor(unit_box).to(device)
+        unit_box = (unit_box - unit_box_mean) / unit_box_std
+        unit_box = torch.tensor(unit_box).to(device)
+        dec_unit_box[:, :] = unit_box
 
     z = (
         torch.from_numpy(
@@ -152,7 +171,7 @@ def predict_boxes_and_angles(is_custom_boundary = False, device='cpu',random_see
         .float()
         .to(device)
     )
-    
+
     boxes_pred_den, angles_pred = decode_latent_vector_box(
         z,
         model,
@@ -162,20 +181,28 @@ def predict_boxes_and_angles(is_custom_boundary = False, device='cpu',random_see
         dec_rel_feat,
         dec_unit_box=dec_unit_box,
         args=args,
-        box_file=box_file
+        box_file=box_file,
     )
-    return boxes_pred_den,angles_pred,dec_unit_box
+    return boxes_pred_den, angles_pred, dec_unit_box
 
 
-def rationalize_box_params(boxes_pred_den,angles_pred,unit_box_mean,unit_box_std,dec_unit_box,data):
-    '''
+def rationalize_box_params(
+    boxes_pred_den,
+    angles_pred,
+    unit_box_mean,
+    unit_box_std,
+    dec_unit_box,
+    data,
+    adj_rel_idx,
+):
+    """
     rationalize the raw output, forcing adjacent rooms attached and children boxes inside the parent boxes
-    return 
+    return
     - box_points: list of 8 corner points with rotation
     - denormalized_boxes: lisst of box params without rotation (dx,dy,dz,cenx,ceny,cenz)
-    
-    '''
-    angles_pred[-1] = 0.0 
+
+    """
+    angles_pred[-1] = 0.0
     dec_triples = data["decoder"]["triples"]
     obj_to_pidx = data["decoder"]["obj_to_pidx"]
     dec_triples = dec_triples.to(boxes_pred_den.device)
@@ -183,29 +210,36 @@ def rationalize_box_params(boxes_pred_den,angles_pred,unit_box_mean,unit_box_std
 
     # unnormalize rel params to abs params
     denormalized_boxes = rel_to_abs_box_params(
-        boxes_pred_den, obj_to_pidx, dec_unit_box[0], unit_box_mean, unit_box_std,angles_pred = angles_pred
+        boxes_pred_den,
+        obj_to_pidx,
+        dec_unit_box[0],
+        unit_box_mean,
+        unit_box_std,
+        angles_pred=angles_pred,
     )
 
-    # TODO:force furniture follows restrictive edge type
-
     # force adjacent rooms attach to each other
-    adj_room_idxs = torch.where(dec_triples[:,1]==14)
-    adj_list = dec_triples[adj_room_idxs][:,[0,2]]
-    denormalized_boxes = force_room_adjacency(adj_list,denormalized_boxes,obj_to_pidx)
+    adj_room_idxs = torch.where(dec_triples[:, 1] == adj_rel_idx)
+    adj_list = dec_triples[adj_room_idxs][:, [0, 2]]
+    denormalized_boxes = force_room_adjacency(adj_list, denormalized_boxes, obj_to_pidx)
     box_points_list = []
     box_and_angle_list = []
     for i in range(len(denormalized_boxes)):
         if angles_pred is None:
             box_points_list.append(params_to_8points_no_rot(denormalized_boxes[i]))
         else:
-            box_and_angle = np.concatenate([denormalized_boxes[i].float(), angles_pred[i].float()])
-            box_and_angle_list.append(box_and_angle)  
-            box_points_list.append(params_to_8points_3dfront(box_and_angle, degrees=True))
+            box_and_angle = np.concatenate(
+                [denormalized_boxes[i].float(), angles_pred[i].float()]
+            )
+            box_and_angle_list.append(box_and_angle)
+            box_points_list.append(
+                params_to_8points_3dfront(box_and_angle, degrees=True)
+            )
 
     # Concatenate the list of tensors into a single tensor
     box_points = np.array(box_points_list)
 
-    return box_points, denormalized_boxes,angles_pred
+    return box_points, denormalized_boxes, angles_pred
 
 
 def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test/partition_emb_box_250/args.json",args=None,model=None,train_dataset=None):
@@ -224,10 +258,11 @@ def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test
     else:
         unit_box_mean = np.array(args["unit_box_mean"])
         unit_box_std = np.array(args["unit_box_std"])
-        obj_idx2name = {v: k for k, v in train_dataset.classes.items()}
-        rel_idx2name = {k + 1: v for k, v in enumerate(train_dataset.relationships)}
-        rel_idx2name[0] = "belong to"
-        device = args['device']
+    obj_idx2name = {v: k for k, v in train_dataset.classes.items()}
+    rel_idx2name = {k + 1: v for k, v in enumerate(train_dataset.relationships)}
+    rel_idx2name[0] = "belong to"
+    adj_rel_idx = train_dataset.relationships_dict["adjacent to"]
+    device = args['device']
 
     # parse data
     data = train_dataset[queried_idx]
@@ -255,7 +290,7 @@ def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test
         box_file = box_file
     )
     box_points, denormalized_boxes, angles_pred = rationalize_box_params(
-        boxes_pred_den, angles_pred, unit_box_mean, unit_box_std, dec_unit_box, data
+        boxes_pred_den, angles_pred, unit_box_mean, unit_box_std, dec_unit_box, data,adj_rel_idx
     )
     detailed_obj_class = train_dataset.vocab["full_object_idx_to_name_grained"]
     sdf_dir = "DEEPSDF_reconstruction/Meshes"
@@ -273,6 +308,7 @@ def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test
         fur_cat,
         sdf_dir,
         retrieve_sdf = False, # export box only meshes
+        ceiling_and_floor= False # no ceiling floors
     )
     exp_dir = os.path.join(args['exp'],'mesh')
     mesh_name = f'{data["scan_id"]}.obj'

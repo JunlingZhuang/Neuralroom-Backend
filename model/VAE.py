@@ -13,7 +13,7 @@ from model.VAEGAN_V1BOX import Sg2ScVAEModel as v1_box
 from model.VAEGAN_V1FULL import Sg2ScVAEModel as v1_full
 from model.VAEGAN_V2BOX import Sg2ScVAEModel as v2_box
 from model.VAEGAN_V2FULL import Sg2ScVAEModel as v2_full
-from model.VAEGAN_V3BOX import Sg2ScVAEModel as v3_box
+# from model.VAEGAN_V3BOX import Sg2ScVAEModel as v3_box
 
 
 class VAE(nn.Module):
