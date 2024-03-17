@@ -37,17 +37,18 @@ def happy():
     return "Happy!"
 
 
-@app.route("/generate",methods=['POST'])
+@app.route('/generate',methods=['POST'])
 def generate_model():
     print("generate_model")
     data = request.get_json()
-    length = data.get("length")
-    height = data.get("height")
-    width = data.get("width")
+    length = data.get('length')
+    height = data.get('height')
+    width = data.get('width')
     # set length, height, width to float if not None
     length = float(length) if length is not None else 0.0
     height = float(height) if height is not None else 0.0
     width = float(width) if width is not None else 0.0
+
     print(length, height, width)
     model_file_path = generate_queried_unit_mesh(
         queried_idx=0,
@@ -58,6 +59,8 @@ def generate_model():
         train_dataset=dataset,
     )
     print(model_file_path)
+
+
     if model_file_path:
         try:
             with open(model_file_path, "r") as model_file:
