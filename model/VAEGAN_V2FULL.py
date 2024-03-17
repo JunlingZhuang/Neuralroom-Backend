@@ -19,21 +19,30 @@ class Sg2ScVAEModel(nn.Module):
     VAE-based network for scene generation and manipulation from a scene graph.
     It has a separate embedding of shape and bounding box latents.
     """
-    def __init__(self, vocab, diff_opt, diffusion_bs=8, embedding_dim=128, batch_size=32,
-                 train_3d=True,
-                 decoder_cat=False,
-                 num_box_params=6,
-                 distribution_before=True,
-                 gconv_pooling='avg', gconv_num_layers=5,
-                 mlp_normalization='none',
-                 vec_noise_dim=0,
-                 use_E2=False,
-                 use_AE=False,
-                 replace_latent=False,
-                 residual=False,
-                 use_angles=False,
-                 clip=True,
-                 device = "cuda"):
+
+    def __init__(
+        self,
+        vocab,
+        diff_opt,
+        diffusion_bs=8,
+        embedding_dim=128,
+        batch_size=32,
+        train_3d=True,
+        decoder_cat=False,
+        num_box_params=6,
+        distribution_before=True,
+        gconv_pooling="avg",
+        gconv_num_layers=5,
+        mlp_normalization="none",
+        vec_noise_dim=0,
+        use_E2=False,
+        use_AE=False,
+        replace_latent=False,
+        residual=False,
+        use_angles=False,
+        clip=True,
+        device="cuda",
+    ):
         super(Sg2ScVAEModel, self).__init__()
         gconv_dim = embedding_dim
         gconv_hidden_dim = gconv_dim * 4
@@ -59,10 +68,14 @@ class Sg2ScVAEModel(nn.Module):
         add_dim = 0
         if clip:
             add_dim = 512
-        self.obj_classes_grained = list(set(vocab['full_object_idx_to_name_grained'])) #include the _scene_
-        self.edge_list = list(set(vocab['full_rel_idx_to_name']))
-        self.obj_classes_list = list(set(vocab['full_object_idx_to_name']))
-        self.classes = dict(zip(sorted(self.obj_classes_list),range(len(self.obj_classes_list))))
+        self.obj_classes_grained = list(
+            set(vocab["full_object_idx_to_name_grained"])
+        )  # include the _scene_
+        self.edge_list = list(set(vocab["full_rel_idx_to_name"]))
+        self.obj_classes_list = list(set(vocab["full_object_idx_to_name"]))
+        self.classes = dict(
+            zip(sorted(self.obj_classes_list), range(len(self.obj_classes_list)))
+        )
         self.classes_r = dict(zip(self.classes.values(), self.classes.keys()))
         num_objs = len(self.obj_classes_list)
         num_preds = len(self.edge_list)
@@ -79,20 +92,44 @@ class Sg2ScVAEModel(nn.Module):
         if self.use_angles:
             self.angle_embeddings = nn.Embedding(Nangle, angle_embedding_dim)
         # weight sharing of mean and var
-        self.mean_var = make_mlp([embedding_dim * 2 + add_dim, gconv_hidden_dim, embedding_dim * 2],
-                                     batch_norm=mlp_normalization)
-        self.mean = make_mlp([embedding_dim * 2, box_embedding_dim], batch_norm=mlp_normalization, norelu=True)
-        self.var = make_mlp([embedding_dim * 2, box_embedding_dim], batch_norm=mlp_normalization, norelu=True)
+        self.mean_var = make_mlp(
+            [embedding_dim * 2 + add_dim, gconv_hidden_dim, embedding_dim * 2],
+            batch_norm=mlp_normalization,
+        )
+        self.mean = make_mlp(
+            [embedding_dim * 2, box_embedding_dim],
+            batch_norm=mlp_normalization,
+            norelu=True,
+        )
+        self.var = make_mlp(
+            [embedding_dim * 2, box_embedding_dim],
+            batch_norm=mlp_normalization,
+            norelu=True,
+        )
         if self.use_angles:
-            self.angle_mean_var = make_mlp([embedding_dim * 2 + add_dim, gconv_hidden_dim, embedding_dim * 2],
-                                           batch_norm=mlp_normalization)
-            self.angle_mean = make_mlp([embedding_dim * 2, angle_embedding_dim], batch_norm=mlp_normalization, norelu=True)
-            self.angle_var = make_mlp([embedding_dim * 2, angle_embedding_dim], batch_norm=mlp_normalization, norelu=True)        # graph conv net
+            self.angle_mean_var = make_mlp(
+                [embedding_dim * 2 + add_dim, gconv_hidden_dim, embedding_dim * 2],
+                batch_norm=mlp_normalization,
+            )
+            self.angle_mean = make_mlp(
+                [embedding_dim * 2, angle_embedding_dim],
+                batch_norm=mlp_normalization,
+                norelu=True,
+            )
+            self.angle_var = make_mlp(
+                [embedding_dim * 2, angle_embedding_dim],
+                batch_norm=mlp_normalization,
+                norelu=True,
+            )  # graph conv net
 
         self.diffusion_bs = diffusion_bs
         self.use_E2 = use_E2
         self.diff_cfg = OmegaConf.load(diff_opt)
-        self.diffusion_bs = diffusion_bs if self.diff_cfg.hyper.batch_size is None else self.diff_cfg.hyper.batch_size
+        self.diffusion_bs = (
+            diffusion_bs
+            if self.diff_cfg.hyper.batch_size is None
+            else self.diff_cfg.hyper.batch_size
+        )
         self.Diff = SDFusionText2ShapeModel(self.diff_cfg)
         # visualizer
         self.visualizer = Visualizer(self.diff_cfg)
@@ -100,45 +137,45 @@ class Sg2ScVAEModel(nn.Module):
             self.visualizer.setup_io()
 
         gconv_kwargs_ec_box = {
-            'input_dim_obj': gconv_dim * 2 + add_dim,
-            'input_dim_pred': gconv_dim * 2 + add_dim,
-            'hidden_dim': gconv_hidden_dim,
-            'pooling': gconv_pooling,
-            'num_layers': gconv_num_layers,
-            'mlp_normalization': mlp_normalization,
-            'residual': residual
+            "input_dim_obj": gconv_dim * 2 + add_dim,
+            "input_dim_pred": gconv_dim * 2 + add_dim,
+            "hidden_dim": gconv_hidden_dim,
+            "pooling": gconv_pooling,
+            "num_layers": gconv_num_layers,
+            "mlp_normalization": mlp_normalization,
+            "residual": residual,
         }
         gconv_kwargs_dc = {
-            'input_dim_obj': gconv_dim + add_dim,
-            'input_dim_pred': gconv_dim,
-            'hidden_dim': gconv_hidden_dim,
-            'pooling': gconv_pooling,
-            'num_layers': gconv_num_layers,
-            'mlp_normalization': mlp_normalization,
-            'residual': residual
+            "input_dim_obj": gconv_dim + add_dim,
+            "input_dim_pred": gconv_dim,
+            "hidden_dim": gconv_hidden_dim,
+            "pooling": gconv_pooling,
+            "num_layers": gconv_num_layers,
+            "mlp_normalization": mlp_normalization,
+            "residual": residual,
         }
         gconv_kwargs_manipulation = {
-            'input_dim_obj': embedding_dim * 3 + add_dim,
-            'input_dim_pred': embedding_dim * 3 + add_dim,
-            'hidden_dim': gconv_hidden_dim,
-            'output_dim': embedding_dim,
-            'pooling': gconv_pooling,
-            'num_layers': min(gconv_num_layers, 5),
-            'mlp_normalization': mlp_normalization,
-            'residual': residual
+            "input_dim_obj": embedding_dim * 3 + add_dim,
+            "input_dim_pred": embedding_dim * 3 + add_dim,
+            "hidden_dim": gconv_hidden_dim,
+            "output_dim": embedding_dim,
+            "pooling": gconv_pooling,
+            "num_layers": min(gconv_num_layers, 5),
+            "mlp_normalization": mlp_normalization,
+            "residual": residual,
         }
         gconv_kwargs_ec_rel = {
-            'input_dim_obj': gconv_dim * 2 + add_dim,
-            'input_dim_pred': gconv_dim * 2 + add_dim,
-            'hidden_dim': gconv_hidden_dim,
-            'pooling': gconv_pooling,
-            'num_layers': gconv_num_layers,
-            'mlp_normalization': mlp_normalization,
-            'residual': residual
+            "input_dim_obj": gconv_dim * 2 + add_dim,
+            "input_dim_pred": gconv_dim * 2 + add_dim,
+            "hidden_dim": gconv_hidden_dim,
+            "pooling": gconv_pooling,
+            "num_layers": gconv_num_layers,
+            "mlp_normalization": mlp_normalization,
+            "residual": residual,
         }
         if self.decoder_cat:
-            gconv_kwargs_dc['input_dim_obj'] = gconv_dim * 2 + add_dim
-            gconv_kwargs_dc['input_dim_pred'] = gconv_dim * 2 + add_dim
+            gconv_kwargs_dc["input_dim_obj"] = gconv_dim * 2 + add_dim
+            gconv_kwargs_dc["input_dim_pred"] = gconv_dim * 2 + add_dim
 
         self.gconv_net_ec_box = GraphTripleConvNet(**gconv_kwargs_ec_box)
 
@@ -152,15 +189,18 @@ class Sg2ScVAEModel(nn.Module):
         self.d3_net = make_mlp(net_layers, batch_norm=mlp_normalization, norelu=True)
 
         net_rel_layers = [gconv_dim * 2 + add_dim, 960, 1280]
-        if self.Diff.df.conditioning_key == 'concat':
+        if self.Diff.df.conditioning_key == "concat":
             net_rel_layers = [gconv_dim * 2 + add_dim, 1280, 4096]
-        self.rel_mlp = make_mlp(net_rel_layers, batch_norm=mlp_normalization, norelu=True)
-
+        self.rel_mlp = make_mlp(
+            net_rel_layers, batch_norm=mlp_normalization, norelu=True
+        )
 
         if self.use_angles:
             # angle prediction net
             angle_net_layers = [gconv_dim * 2 + add_dim, gconv_hidden_dim, Nangle]
-            self.angle_net = make_mlp(angle_net_layers, batch_norm=mlp_normalization, norelu=True)
+            self.angle_net = make_mlp(
+                angle_net_layers, batch_norm=mlp_normalization, norelu=True
+            )
 
         # initialization
         self.d3_embeddings.apply(_init_weights)
@@ -177,15 +217,24 @@ class Sg2ScVAEModel(nn.Module):
 
     def set_cuda(self):
         # set reachable parameters cuda
-        #self.cuda()
+        # self.cuda()
         self = _CustomDataParallel(self)
 
         # call unreachable sdfusion set cuda
         # self.Diff.cuda()
-        #self.Diff = _CustomDataParallel(self.Diff)
+        # self.Diff = _CustomDataParallel(self.Diff)
 
     # same logic as graph-to-3d
-    def encoder(self, objs, triples, boxes_gt, attributes, enc_text_feat, enc_rel_feat, angles_gt=None):
+    def encoder(
+        self,
+        objs,
+        triples,
+        boxes_gt,
+        attributes,
+        enc_text_feat,
+        enc_rel_feat,
+        angles_gt=None,
+    ):
         O, T = objs.size(0), triples.size(0)
         s, p, o = triples.chunk(3, dim=1)  # All have shape (T, 1)
         s, p, o = [x.squeeze(1) for x in [s, p, o]]  # Now have shape (T,)
@@ -193,7 +242,7 @@ class Sg2ScVAEModel(nn.Module):
 
         obj_vecs = self.obj_embeddings_ec(objs)
         pred_vecs = self.pred_embeddings_ec(p)
-        d3_vecs = self.d3_embeddings(boxes_gt)  #box embedding
+        d3_vecs = self.d3_embeddings(boxes_gt)  # box embedding
         if self.clip:
             obj_vecs_ = torch.cat([enc_text_feat, obj_vecs], dim=1)
             pred_vecs_ = torch.cat([enc_rel_feat, pred_vecs], dim=1)
@@ -205,14 +254,16 @@ class Sg2ScVAEModel(nn.Module):
         else:
             obj_vecs_ = torch.cat([obj_vecs_, d3_vecs], dim=1)
 
-        obj_vecs_, pred_vecs_ = self.gconv_net_ec_box(obj_vecs_, pred_vecs_, edges) # GCN to extract graph features
+        obj_vecs_, pred_vecs_ = self.gconv_net_ec_box(
+            obj_vecs_, pred_vecs_, edges
+        )  # GCN to extract graph features
 
         # MLPs after GCN to extract mean and var for gaussian latents
         obj_vecs_3d = self.mean_var(obj_vecs_)
         mu = self.mean(obj_vecs_3d)
         logvar = self.var(obj_vecs_3d)
 
-        if self.use_angles: # additional angle MLPs
+        if self.use_angles:  # additional angle MLPs
             obj_vecs_angle = self.angle_mean_var(obj_vecs_)
             mu_angle = self.angle_mean(obj_vecs_angle)
             logvar_angle = self.angle_var(obj_vecs_angle)
@@ -221,7 +272,16 @@ class Sg2ScVAEModel(nn.Module):
 
         return mu, logvar
 
-    def encoder_2(self, z, objs, triples, dec_text_feat, dec_rel_feat, attributes, manipulate=False):# only extract relational features
+    def encoder_2(
+        self,
+        z,
+        objs,
+        triples,
+        dec_text_feat,
+        dec_rel_feat,
+        attributes,
+        manipulate=False,
+    ):  # only extract relational features
         s, p, o = triples.chunk(3, dim=1)  # All have shape (T, 1)
         s, p, o = [x.squeeze(1) for x in [s, p, o]]  # Now have shape (T,)
         edges = torch.stack([s, o], dim=1)  # Shape is (T, 2)
@@ -232,7 +292,7 @@ class Sg2ScVAEModel(nn.Module):
             obj_vecs_ = torch.cat([dec_text_feat, obj_vecs], dim=1)
             pred_vecs_ = torch.cat([dec_rel_feat, pred_vecs], dim=1)
         else:
-            obj_vecs_, pred_vecs_=obj_vecs,pred_vecs
+            obj_vecs_, pred_vecs_ = obj_vecs, pred_vecs
         # concatenate noise first
         rel_vecs_ = torch.cat([obj_vecs_, z], dim=1)
         rel_vecs_2 = None
@@ -256,13 +316,22 @@ class Sg2ScVAEModel(nn.Module):
             obj_vecs_ = torch.cat([dec_text_feat, obj_vecs], dim=1)
             pred_vecs_ = torch.cat([dec_rel_feat, pred_vecs], dim=1)
         else:
-            obj_vecs_, pred_vecs_= obj_vecs, pred_vecs
+            obj_vecs_, pred_vecs_ = obj_vecs, pred_vecs
         man_z = torch.cat([z, obj_vecs_], dim=1)
         man_z, _ = self.gconv_net_manipulation(man_z, pred_vecs_, edges)
 
         return man_z
 
-    def decoder(self, z, objs, triples, dec_text_feat, dec_rel_feat, attributes, manipulate=False):
+    def decoder(
+        self,
+        z,
+        objs,
+        triples,
+        dec_text_feat,
+        dec_rel_feat,
+        attributes,
+        manipulate=False,
+    ):
         s, p, o = triples.chunk(3, dim=1)  # All have shape (T, 1)
         s, p, o = [x.squeeze(1) for x in [s, p, o]]  # Now have shape (T,)
         edges = torch.stack([s, o], dim=1)  # Shape is (T, 2)
@@ -292,7 +361,20 @@ class Sg2ScVAEModel(nn.Module):
         else:
             return d3_pred
 
-    def decoder_with_additions(self, z, objs, triples, encoded_dec_text_feat, encoded_dec_rel_feat, dec_sdfs, attributes, missing_nodes, manipulated_nodes, distribution=None,gen_shape=False):
+    def decoder_with_additions(
+        self,
+        z,
+        objs,
+        triples,
+        encoded_dec_text_feat,
+        encoded_dec_rel_feat,
+        dec_sdfs,
+        attributes,
+        missing_nodes,
+        manipulated_nodes,
+        distribution=None,
+        gen_shape=False,
+    ):
         nodes_added = []
         if distribution is not None:
             mu, cov = distribution
@@ -302,7 +384,11 @@ class Sg2ScVAEModel(nn.Module):
             nodes_added.append(ad_id)
             noise = np.zeros(z.shape[1])  # np.random.normal(0, 1, 64)
             if distribution is not None:
-                zeros = torch.from_numpy(np.random.multivariate_normal(mu, cov, 1)).float().cuda()
+                zeros = (
+                    torch.from_numpy(np.random.multivariate_normal(mu, cov, 1))
+                    .float()
+                    .cuda()
+                )
             else:
                 zeros = torch.from_numpy(noise.reshape(1, z.shape[1]))
             zeros.requires_grad = True
@@ -311,16 +397,29 @@ class Sg2ScVAEModel(nn.Module):
 
         gen_sdf = None
         if gen_shape:
-            un_rel_feat, rel_feat = self.encoder_2(z, objs, triples, encoded_dec_text_feat, encoded_dec_rel_feat, attributes)
+            un_rel_feat, rel_feat = self.encoder_2(
+                z,
+                objs,
+                triples,
+                encoded_dec_text_feat,
+                encoded_dec_rel_feat,
+                attributes,
+            )
             sdf_candidates = dec_sdfs
             length = objs.size(0)
             zeros_tensor = torch.zeros_like(sdf_candidates[0])
             mask = torch.ne(sdf_candidates, zeros_tensor)
             ids = torch.unique(torch.where(mask)[0])
             obj_selected = objs[ids]
-            diff_dict = {'sdf': dec_sdfs[ids], 'rel': rel_feat[ids], 'uc': un_rel_feat[ids]}
-            gen_sdf = self.Diff.rel2shape(diff_dict, uc_scale=3.)
-        dec_man_enc_pred = self.decoder(z, objs, triples, encoded_dec_text_feat, encoded_dec_rel_feat, attributes)
+            diff_dict = {
+                "sdf": dec_sdfs[ids],
+                "rel": rel_feat[ids],
+                "uc": un_rel_feat[ids],
+            }
+            gen_sdf = self.Diff.rel2shape(diff_dict, uc_scale=3.0)
+        dec_man_enc_pred = self.decoder(
+            z, objs, triples, encoded_dec_text_feat, encoded_dec_rel_feat, attributes
+        )
 
         keep = []
         for i in range(len(z)):
@@ -333,24 +432,41 @@ class Sg2ScVAEModel(nn.Module):
 
         return dec_man_enc_pred, gen_sdf, keep
 
-    def decoder_with_changes(self, z, dec_objs, dec_triples, encoded_dec_text_feat, encoded_dec_rel_feat, dec_sdfs, attributes, missing_nodes, manipulated_nodes, distribution=None,gen_shape=False):
+    def decoder_with_changes(
+        self,
+        z,
+        dec_objs,
+        dec_triples,
+        encoded_dec_text_feat,
+        encoded_dec_rel_feat,
+        dec_sdfs,
+        attributes,
+        missing_nodes,
+        manipulated_nodes,
+        distribution=None,
+        gen_shape=False,
+    ):
         # append zero nodes
         if distribution is not None:
             (mu, cov) = distribution
         nodes_added = []
         for i in range(len(missing_nodes)):
-          ad_id = missing_nodes[i] + i
-          nodes_added.append(ad_id)
-          noise = np.zeros(self.embedding_dim) # np.random.normal(0, 1, 64)
-          if distribution is not None:
-            zeros = torch.from_numpy(np.random.multivariate_normal(mu, cov, 1)).float().cuda()
-          else:
-            zeros = torch.from_numpy(noise.reshape(1, z.shape[1]))
-          zeros.requires_grad = True
-          zeros = zeros.float().cuda()
-          z = torch.cat([z[:ad_id], zeros, z[ad_id:]], dim=0)
+            ad_id = missing_nodes[i] + i
+            nodes_added.append(ad_id)
+            noise = np.zeros(self.embedding_dim)  # np.random.normal(0, 1, 64)
+            if distribution is not None:
+                zeros = (
+                    torch.from_numpy(np.random.multivariate_normal(mu, cov, 1))
+                    .float()
+                    .cuda()
+                )
+            else:
+                zeros = torch.from_numpy(noise.reshape(1, z.shape[1]))
+            zeros.requires_grad = True
+            zeros = zeros.float().cuda()
+            z = torch.cat([z[:ad_id], zeros, z[ad_id:]], dim=0)
 
-        # mark changes in nodes  
+        # mark changes in nodes
         # change from original z to z' (make chance for latent walk)
         change_repr = []
         for i in range(len(z)):
@@ -361,29 +477,60 @@ class Sg2ScVAEModel(nn.Module):
             change_repr.append(torch.from_numpy(noisechange).float().cuda())
         change_repr = torch.stack(change_repr, dim=0)
         z_prime = torch.cat([z, change_repr], dim=1)
-        z_prime = self.manipulate(z_prime, dec_objs, dec_triples, encoded_dec_text_feat, encoded_dec_rel_feat, attributes)
+        z_prime = self.manipulate(
+            z_prime,
+            dec_objs,
+            dec_triples,
+            encoded_dec_text_feat,
+            encoded_dec_rel_feat,
+            attributes,
+        )
 
         if not self.replace_all_latent:
             # take original nodes when untouched
             touched_nodes = torch.tensor(sorted(nodes_added + manipulated_nodes)).long()
             for touched_node in touched_nodes:
-                z = torch.cat([z[:touched_node], z_prime[touched_node:touched_node + 1], z[touched_node + 1:]], dim=0)
+                z = torch.cat(
+                    [
+                        z[:touched_node],
+                        z_prime[touched_node : touched_node + 1],
+                        z[touched_node + 1 :],
+                    ],
+                    dim=0,
+                )
         else:
             z = z_prime
 
         gen_sdf = None
         if gen_shape:
-            un_rel_feat, rel_feat = self.encoder_2(z, dec_objs, dec_triples, encoded_dec_text_feat, encoded_dec_rel_feat, attributes)
+            un_rel_feat, rel_feat = self.encoder_2(
+                z,
+                dec_objs,
+                dec_triples,
+                encoded_dec_text_feat,
+                encoded_dec_rel_feat,
+                attributes,
+            )
             sdf_candidates = dec_sdfs
             length = dec_objs.size(0)
             zeros_tensor = torch.zeros_like(sdf_candidates[0])
             mask = torch.ne(sdf_candidates, zeros_tensor)
             ids = torch.unique(torch.where(mask)[0])
             obj_selected = dec_objs[ids]
-            diff_dict = {'sdf': dec_sdfs[ids], 'rel': rel_feat[ids], 'uc': un_rel_feat[ids]}
-            gen_sdf = self.Diff.rel2shape(diff_dict,uc_scale=3.)
-        dec_man_enc_pred = self.decoder(z, dec_objs, dec_triples, encoded_dec_text_feat, encoded_dec_rel_feat,
-                                        attributes)
+            diff_dict = {
+                "sdf": dec_sdfs[ids],
+                "rel": rel_feat[ids],
+                "uc": un_rel_feat[ids],
+            }
+            gen_sdf = self.Diff.rel2shape(diff_dict, uc_scale=3.0)
+        dec_man_enc_pred = self.decoder(
+            z,
+            dec_objs,
+            dec_triples,
+            encoded_dec_text_feat,
+            encoded_dec_rel_feat,
+            attributes,
+        )
         if self.use_angles:
             num_dec_objs = len(dec_man_enc_pred[0])
         else:
@@ -391,17 +538,19 @@ class Sg2ScVAEModel(nn.Module):
 
         keep = []
         for i in range(num_dec_objs):
-          if i not in nodes_added and i not in manipulated_nodes:
-            keep.append(1)
-          else:
-            keep.append(0)
+            if i not in nodes_added and i not in manipulated_nodes:
+                keep.append(1)
+            else:
+                keep.append(0)
 
         keep = torch.from_numpy(np.asarray(keep).reshape(-1, 1)).float().cuda()
 
         return dec_man_enc_pred, gen_sdf, keep
 
     def balance_objects(self, id_list, object_list, n):
-        assert len(id_list) == len(object_list), "id_list and object_list must have the same length"
+        assert len(id_list) == len(
+            object_list
+        ), "id_list and object_list must have the same length"
 
         unique_ids = torch.unique(id_list)
         selected_object_indices = []
@@ -419,12 +568,23 @@ class Sg2ScVAEModel(nn.Module):
         # find the corresponding ids in the coarse object classes
         for selected_id in sampled_unique_ids:
             selected_indices = (id_list == selected_id).nonzero(as_tuple=True)[0]
-            selected_object_idx = selected_indices[random.choice(range(len(selected_indices)))]
+            selected_object_idx = selected_indices[
+                random.choice(range(len(selected_indices)))
+            ]
             selected_object_indices.append(selected_object_idx)
 
         return torch.tensor(selected_object_indices)
 
-    def select_sdfs(self, dec_objs_to_scene, dec_objs, dec_objs_grained, dec_sdfs, uc_rel_feat, c_rel_feat, random=False):
+    def select_sdfs(
+        self,
+        dec_objs_to_scene,
+        dec_objs,
+        dec_objs_grained,
+        dec_sdfs,
+        uc_rel_feat,
+        c_rel_feat,
+        random=False,
+    ):
         dec_objs_to_scene = dec_objs_to_scene.detach().cpu().numpy()
         batch_size = np.max(dec_objs_to_scene) + 1
         sdf_selected = []
@@ -454,7 +614,9 @@ class Sg2ScVAEModel(nn.Module):
             else:
                 # TODO: balance every object.
                 # essential_names = self.obj_classes_grained
-                selected_cat_ids = self.balance_objects(obj_cat_grained[ids], obj_cat[ids], num_obj)
+                selected_cat_ids = self.balance_objects(
+                    obj_cat_grained[ids], obj_cat[ids], num_obj
+                )
                 sdf_selected.append(sdf_candidates[selected_cat_ids])
                 uc_rel_selected.append(uc_rel[selected_cat_ids])
                 c_rel_selected.append(c_rel[selected_cat_ids])
@@ -464,19 +626,51 @@ class Sg2ScVAEModel(nn.Module):
         uc_rel_selected = torch.cat(uc_rel_selected, dim=0).cuda()
         c_rel_selected = torch.cat(c_rel_selected, dim=0).cuda()
         obj_cat_selected = torch.cat(obj_cat_selected, dim=0)
-        diff_dict = {'sdf': sdf_selected[:self.diffusion_bs], 'uc': uc_rel_selected[:self.diffusion_bs], 'rel': c_rel_selected[:self.diffusion_bs]}
-        return obj_cat_selected[:self.diffusion_bs], diff_dict
+        diff_dict = {
+            "sdf": sdf_selected[: self.diffusion_bs],
+            "uc": uc_rel_selected[: self.diffusion_bs],
+            "rel": c_rel_selected[: self.diffusion_bs],
+        }
+        return obj_cat_selected[: self.diffusion_bs], diff_dict
 
-    def forward(self, enc_objs, enc_triples, enc, enc_text_feat, enc_rel_feat, attributes, enc_objs_to_scene, dec_objs, dec_objs_grained,
-                dec_triples, dec, dec_text_feat, dec_rel_feat, dec_attributes, dec_objs_to_scene, missing_nodes, manipulated_nodes, dec_sdfs,
-                enc_angles=None, dec_angles=None):
+    def forward(
+        self,
+        enc_objs,
+        enc_triples,
+        enc,
+        enc_text_feat,
+        enc_rel_feat,
+        attributes,
+        enc_objs_to_scene,
+        dec_objs,
+        dec_objs_grained,
+        dec_triples,
+        dec,
+        dec_text_feat,
+        dec_rel_feat,
+        dec_attributes,
+        dec_objs_to_scene,
+        missing_nodes,
+        manipulated_nodes,
+        dec_sdfs,
+        enc_angles=None,
+        dec_angles=None,
+    ):
 
-        mu, logvar = self.encoder(enc_objs, enc_triples, enc, attributes, enc_text_feat, enc_rel_feat, enc_angles)
+        mu, logvar = self.encoder(
+            enc_objs,
+            enc_triples,
+            enc,
+            attributes,
+            enc_text_feat,
+            enc_rel_feat,
+            enc_angles,
+        )
         if self.use_AE:
             z = mu
         else:
             # reparameterization
-            std = torch.exp(0.5*logvar)
+            std = torch.exp(0.5 * logvar)
             # standard sampling
             eps = torch.randn_like(std)
             z = eps.mul(std).add_(mu)
@@ -484,13 +678,13 @@ class Sg2ScVAEModel(nn.Module):
         # append zero nodes for adding nodes manipulation
         nodes_added = []
         for i in range(len(missing_nodes)):
-          ad_id = missing_nodes[i] + i
-          nodes_added.append(ad_id)
-          noise = np.zeros(self.embedding_dim) # np.random.normal(0, 1, 64)
-          zeros = torch.from_numpy(noise.reshape(1, self.embedding_dim))
-          zeros.requires_grad = True
-          zeros = zeros.float().cuda()
-          z = torch.cat([z[:ad_id], zeros, z[ad_id:]], dim=0)
+            ad_id = missing_nodes[i] + i
+            nodes_added.append(ad_id)
+            noise = np.zeros(self.embedding_dim)  # np.random.normal(0, 1, 64)
+            zeros = torch.from_numpy(noise.reshape(1, self.embedding_dim))
+            zeros.requires_grad = True
+            zeros = zeros.float().cuda()
+            z = torch.cat([z[:ad_id], zeros, z[ad_id:]], dim=0)
 
         # mark changes in nodes
         change_repr = []
@@ -502,35 +696,55 @@ class Sg2ScVAEModel(nn.Module):
             change_repr.append(torch.from_numpy(noisechange).float().cuda())
         change_repr = torch.stack(change_repr, dim=0)
         z_prime = torch.cat([z, change_repr], dim=1)
-        z_prime = self.manipulate(z_prime, dec_objs, dec_triples, dec_text_feat, dec_rel_feat, attributes)
+        z_prime = self.manipulate(
+            z_prime, dec_objs, dec_triples, dec_text_feat, dec_rel_feat, attributes
+        )
 
         if not self.replace_all_latent:
             # take original nodes when untouched
             touched_nodes = torch.tensor(sorted(nodes_added + manipulated_nodes)).long()
             for touched_node in touched_nodes:
-                z = torch.cat([z[:touched_node], z_prime[touched_node:touched_node + 1], z[touched_node + 1:]], dim=0)
+                z = torch.cat(
+                    [
+                        z[:touched_node],
+                        z_prime[touched_node : touched_node + 1],
+                        z[touched_node + 1 :],
+                    ],
+                    dim=0,
+                )
         else:
             z = z_prime
 
         # TODO: z, clip, dec_objs, dec_triples to GCN -> relation embeddings -> diffusion
-        uc_rel_feat, c_rel_feat = self.encoder_2(z, dec_objs, dec_triples, dec_text_feat, dec_rel_feat, attributes)
+        uc_rel_feat, c_rel_feat = self.encoder_2(
+            z, dec_objs, dec_triples, dec_text_feat, dec_rel_feat, attributes
+        )
         if c_rel_feat == None:
             c_rel_feat = uc_rel_feat
-        obj_selected, diff_dict = self.select_sdfs(dec_objs_to_scene, dec_objs, dec_objs_grained, dec_sdfs, uc_rel_feat, c_rel_feat, random=False)
+        obj_selected, diff_dict = self.select_sdfs(
+            dec_objs_to_scene,
+            dec_objs,
+            dec_objs_grained,
+            dec_sdfs,
+            uc_rel_feat,
+            c_rel_feat,
+            random=False,
+        )
         # if False:
         #     id_ = torch.where(dec_objs==31)
         #     obj_selected = torch.tensor([31]).to(torch.int64)
         #     diff_dict = {'sdf': dec_sdfs[id_],'rel':c_rel_feat[id_],'uc':uc_rel_feat[id_]}
-        
+
         # diffusion process
         self.Diff.set_input(diff_dict)
         self.Diff.set_requires_grad([self.Diff.df], requires_grad=True)
         self.Diff.forward()
         dec_shapes_selected = None
 
-
         if self.use_angles:
-            dec_man_enc_pred, angles_pred = self.decoder(z, dec_objs, dec_triples, dec_text_feat, dec_rel_feat, attributes)
+            dec_man_enc_pred, angles_pred = self.decoder(
+                z, dec_objs, dec_triples, dec_text_feat, dec_rel_feat, attributes
+            )
             orig_angles = []
             orig_gt_angles = []
         else:
@@ -541,16 +755,16 @@ class Sg2ScVAEModel(nn.Module):
         orig_gt_shapes = []
         keep = []
         for i in range(len(dec_man_enc_pred)):
-          if i not in nodes_added and i not in manipulated_nodes:
-            orig_d3.append(dec_man_enc_pred[i:i+1])
-            orig_gt_d3.append(dec[i:i+1])
-            orig_gt_shapes.append(dec_sdfs[i:i + 1])
-            if self.use_angles:
-                orig_angles.append(angles_pred[i:i+1])
-                orig_gt_angles.append(dec_angles[i:i+1])
-            keep.append(1)
-          else:
-            keep.append(0)
+            if i not in nodes_added and i not in manipulated_nodes:
+                orig_d3.append(dec_man_enc_pred[i : i + 1])
+                orig_gt_d3.append(dec[i : i + 1])
+                orig_gt_shapes.append(dec_sdfs[i : i + 1])
+                if self.use_angles:
+                    orig_angles.append(angles_pred[i : i + 1])
+                    orig_gt_angles.append(dec_angles[i : i + 1])
+                keep.append(1)
+            else:
+                keep.append(0)
 
         orig_d3 = torch.cat(orig_d3, dim=0)
         orig_gt_shapes = torch.cat(orig_gt_shapes, dim=0)
@@ -562,7 +776,19 @@ class Sg2ScVAEModel(nn.Module):
         else:
             orig_angles, orig_gt_angles, angles_pred = None, None, None
 
-        return mu, logvar, orig_gt_d3, orig_gt_angles, orig_gt_shapes, orig_d3, orig_angles, dec_man_enc_pred, angles_pred, [obj_selected, dec_shapes_selected], keep
+        return (
+            mu,
+            logvar,
+            orig_gt_d3,
+            orig_gt_angles,
+            orig_gt_shapes,
+            orig_d3,
+            orig_angles,
+            dec_man_enc_pred,
+            angles_pred,
+            [obj_selected, dec_shapes_selected],
+            keep,
+        )
 
     def forward_no_mani(self, objs, triples, enc, attributes):
         mu, logvar = self.encoder(objs, triples, enc, attributes)
@@ -578,38 +804,91 @@ class Sg2ScVAEModel(nn.Module):
         keep = torch.from_numpy(np.asarray(keep).reshape(-1, 1)).float().cuda()
         return mu, logvar, dec_man_enc_pred, keep
 
-    def sampleShape(self, point_classes_idx, point_ae, mean_est_shape, cov_est_shape, dec_objs, dec_triplets,
-                    attributes=None):
+    def sampleShape(
+        self,
+        point_classes_idx,
+        point_ae,
+        mean_est_shape,
+        cov_est_shape,
+        dec_objs,
+        dec_triplets,
+        attributes=None,
+    ):
         with torch.no_grad():
             z_shape = []
             for idxz in dec_objs:
                 idxz = int(idxz.cpu())
                 if idxz in point_classes_idx:
-                    z_shape.append(torch.from_numpy(
-                        np.random.multivariate_normal(mean_est_shape[idxz], cov_est_shape[idxz], 1)).float().cuda())
+                    z_shape.append(
+                        torch.from_numpy(
+                            np.random.multivariate_normal(
+                                mean_est_shape[idxz], cov_est_shape[idxz], 1
+                            )
+                        )
+                        .float()
+                        .cuda()
+                    )
                 else:
-                    z_shape.append(torch.from_numpy(np.random.multivariate_normal(mean_est_shape[-1],
-                                                                                  cov_est_shape[-1],
-                                                                                  1)).float().cuda())
+                    z_shape.append(
+                        torch.from_numpy(
+                            np.random.multivariate_normal(
+                                mean_est_shape[-1], cov_est_shape[-1], 1
+                            )
+                        )
+                        .float()
+                        .cuda()
+                    )
             z_shape = torch.cat(z_shape, 0)
 
             dc_shapes = self.decoder(z_shape, dec_objs, dec_triplets, attributes)
-            points = point_ae.forward_inference_from_latent_space(dc_shapes, point_ae.get_grid())
+            points = point_ae.forward_inference_from_latent_space(
+                dc_shapes, point_ae.get_grid()
+            )
         return points, dc_shapes
 
     def sampleBoxes(self, mean_est, cov_est, dec_objs, dec_triplets, attributes=None):
         with torch.no_grad():
-            z = torch.from_numpy(
-            np.random.multivariate_normal(mean_est, cov_est, dec_objs.size(0))).float().cuda()
+            z = (
+                torch.from_numpy(
+                    np.random.multivariate_normal(mean_est, cov_est, dec_objs.size(0))
+                )
+                .float()
+                .cuda()
+            )
 
             return self.decoder(z, dec_objs, dec_triplets, attributes)
 
-    def sample(self, point_classes_idx, mean_est, cov_est, dec_objs, dec_triplets, dec_sdfs, encoded_dec_text_feat, encoded_dec_rel_feat, attributes=None, gen_shape=False):
+    def sample(
+        self,
+        point_classes_idx,
+        mean_est,
+        cov_est,
+        dec_objs,
+        dec_triplets,
+        dec_sdfs,
+        encoded_dec_text_feat,
+        encoded_dec_rel_feat,
+        attributes=None,
+        gen_shape=False,
+    ):
         with torch.no_grad():
-            z = torch.from_numpy(np.random.multivariate_normal(mean_est, cov_est, dec_objs.size(0))).float().cuda()
+            z = (
+                torch.from_numpy(
+                    np.random.multivariate_normal(mean_est, cov_est, dec_objs.size(0))
+                )
+                .float()
+                .cuda()
+            )
             gen_sdf = None
             if gen_shape:
-                un_rel_feat, rel_feat = self.encoder_2(z, dec_objs, dec_triplets, encoded_dec_text_feat, encoded_dec_rel_feat, attributes)
+                un_rel_feat, rel_feat = self.encoder_2(
+                    z,
+                    dec_objs,
+                    dec_triplets,
+                    encoded_dec_text_feat,
+                    encoded_dec_rel_feat,
+                    attributes,
+                )
                 sdf_candidates = dec_sdfs
                 length = dec_objs.size(0)
                 zeros_tensor = torch.zeros_like(sdf_candidates[0])
@@ -618,11 +897,24 @@ class Sg2ScVAEModel(nn.Module):
                 obj_selected = dec_objs[ids]
                 if rel_feat == None:
                     rel_feat = un_rel_feat
-                diff_dict = {'sdf': dec_sdfs[ids], 'rel': rel_feat[ids], 'uc': un_rel_feat[ids]}
-                gen_sdf = self.Diff.rel2shape(diff_dict,uc_scale=3.)
+                diff_dict = {
+                    "sdf": dec_sdfs[ids],
+                    "rel": rel_feat[ids],
+                    "uc": un_rel_feat[ids],
+                }
+                gen_sdf = self.Diff.rel2shape(diff_dict, uc_scale=3.0)
 
-
-            return self.decoder(z, dec_objs, dec_triplets, encoded_dec_text_feat, encoded_dec_rel_feat, attributes), gen_sdf
+            return (
+                self.decoder(
+                    z,
+                    dec_objs,
+                    dec_triplets,
+                    encoded_dec_text_feat,
+                    encoded_dec_rel_feat,
+                    attributes,
+                ),
+                gen_sdf,
+            )
 
     # 0-20k->20k-60k->60k-100k->100k-
     # 1e-4 -> 5e-5 -> 1e-5 -> 5e-6
@@ -641,20 +933,23 @@ class Sg2ScVAEModel(nn.Module):
 
     def optimizer_ini(self):
         # optimizer_box for model
-        #if self.isTrain:
+        # if self.isTrain:
         # initialize optimizers
 
         # first branch
-        #params = filter(lambda p: p.requires_grad, list(self.parameters()))
+        # params = filter(lambda p: p.requires_grad, list(self.parameters()))
         params = [p for p in self.parameters() if p.requires_grad == True]
         # diffusion
         df_params = self.Diff.trainable_params
 
         trainable_params = params + df_params
 
-
-        self.optimizerFULL = optim.AdamW(trainable_params, lr=1e-4)  # self.lr) #TODO: replace with opt.training.lr
-        self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizerFULL, lr_lambda=self.lr_lambda)
+        self.optimizerFULL = optim.AdamW(
+            trainable_params, lr=1e-4
+        )  # self.lr) #TODO: replace with opt.training.lr
+        self.scheduler = optim.lr_scheduler.LambdaLR(
+            self.optimizerFULL, lr_lambda=self.lr_lambda
+        )
 
         # self.optimizerFULL = optim.AdamW(trainable_params, lr=1e-5)
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizerFULL, 30000, 0.9)
@@ -676,34 +971,36 @@ class Sg2ScVAEModel(nn.Module):
         self.optimizers = [self.optimizerFULL]
         # self.schedulers = [self.scheduler]
 
-        #self.print_networks(verbose=False)
+        # self.print_networks(verbose=False)
 
-        #self.optimizer_box = optim.Adam(params, lr=self.lr)
-        #self.optimizer_box.step()
+        # self.optimizer_box = optim.Adam(params, lr=self.lr)
+        # self.optimizer_box.step()
 
         # update learning rate (called once every epoch)
+
     def update_learning_rate(self):
         # update lr
         # for scheduler in self.schedulers:
         self.scheduler.step()
-        lr = self.optimizers[0].param_groups[0]['lr']
-        print('[*] learning rate = %.7f' % lr)
+        lr = self.optimizers[0].param_groups[0]["lr"]
+        print("[*] learning rate = %.7f" % lr)
 
         return lr
 
     def state_dict(self, epoch, counter):
         state_dict_1 = super(Sg2ScVAEModel, self).state_dict()
         state_dict_2 = {
-            'epoch': epoch,
-            'counter': counter,
-            'vqvae': self.Diff.vqvae_module.state_dict(),
+            "epoch": epoch,
+            "counter": counter,
+            "vqvae": self.Diff.vqvae_module.state_dict(),
             # 'cond_model': self.cond_model_module.state_dict(),
-            'df': self.Diff.df_module.state_dict(),
+            "df": self.Diff.df_module.state_dict(),
             #'diff_opt': self.Diff.optimizer.state_dict()
-            'opt': self.optimizerFULL.state_dict()
+            "opt": self.optimizerFULL.state_dict(),
         }
         state_dict_1.update(state_dict_2)
         return state_dict_1
+
     def collect_train_statistics(self, train_loader, with_points=False):
         # model = model.eval()
         mean_cat = None
@@ -719,22 +1016,30 @@ class Sg2ScVAEModel(nn.Module):
             if data == -1:
                 continue
             try:
-                objs, triples, tight_boxes, objs_to_scene, triples_to_scene = data['decoder']['objs'], \
-                                                                              data['decoder']['tripltes'], \
-                                                                              data['decoder']['boxes'], \
-                                                                              data['decoder']['obj_to_scene'], \
-                                                                              data['decoder']['triple_to_scene']
+                objs, triples, tight_boxes, objs_to_scene, triples_to_scene = (
+                    data["decoder"]["objs"],
+                    data["decoder"]["triples"],
+                    data["decoder"]["boxes"],
+                    data["decoder"]["obj_to_scene"],
+                    data["decoder"]["triple_to_scene"],
+                )
 
                 enc_text_feat, enc_rel_feat = None, None
-                if 'feats' in data['decoder']:
-                    encoded_points = data['decoder']['feats']
+                if "feats" in data["decoder"]:
+                    encoded_points = data["decoder"]["feats"]
                     encoded_points = encoded_points.cuda()
-                if 'text_feats' in data['decoder'] and 'rel_feats' in data['decoder']:
-                    enc_text_feat, enc_rel_feat = data['decoder']['text_feats'], data['decoder']['rel_feats']
-                    enc_text_feat, enc_rel_feat = enc_text_feat.cuda(), enc_rel_feat.cuda()
+                if "text_feats" in data["decoder"] and "rel_feats" in data["decoder"]:
+                    enc_text_feat, enc_rel_feat = (
+                        data["decoder"]["text_feats"],
+                        data["decoder"]["rel_feats"],
+                    )
+                    enc_text_feat, enc_rel_feat = (
+                        enc_text_feat.cuda(),
+                        enc_rel_feat.cuda(),
+                    )
 
             except Exception as e:
-                print('Exception', str(e))
+                print("Exception", str(e))
                 continue
 
             objs, triples, tight_boxes = objs.cuda(), triples.cuda(), tight_boxes.cuda()
@@ -743,8 +1048,9 @@ class Sg2ScVAEModel(nn.Module):
             angles = torch.where(angles > 0, angles, torch.zeros_like(angles))
             attributes = None
 
-
-            mean, logvar = self.encoder(objs, triples, boxes, attributes, enc_text_feat, enc_rel_feat, angles)
+            mean, logvar = self.encoder(
+                objs, triples, boxes, attributes, enc_text_feat, enc_rel_feat, angles
+            )
             mean, logvar = mean.cpu().clone(), logvar.cpu().clone()
 
             mean = mean.data.cpu().clone()

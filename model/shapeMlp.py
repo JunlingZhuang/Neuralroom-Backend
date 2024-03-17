@@ -4,8 +4,7 @@ import numpy as np
 
 
 class ShapeMLP(nn.Module):
-    def __init__(self, num_objs,
-                 embedding_dim=128):
+    def __init__(self, num_objs, embedding_dim=128):
         super(ShapeMLP, self).__init__()
 
         self.obj_emb = nn.Embedding(num_objs + 1, 16)
@@ -26,7 +25,6 @@ class ShapeMLP(nn.Module):
         self.bn12 = nn.BatchNorm1d(16)
         self.l12 = nn.Linear(16, 128)
 
-
     def encoder(self, objs, shapes_gt):
         obj_vecs = self.obj_emb(objs)
         obj_vecs = torch.cat([obj_vecs, shapes_gt], dim=1)
@@ -38,7 +36,9 @@ class ShapeMLP(nn.Module):
         logvar = self.l3_logvar(obj_vecs)
         return mu, logvar
 
-    def decoder_with_additions(self, z, objs, missing_nodes, manipulated_nodes, distribution=None):
+    def decoder_with_additions(
+        self, z, objs, missing_nodes, manipulated_nodes, distribution=None
+    ):
         nodes_added = []
         if distribution is not None:
             mu, cov = distribution
@@ -49,9 +49,21 @@ class ShapeMLP(nn.Module):
             noise = np.zeros(z.shape[1])  # np.random.normal(0, 1, 64)
             if distribution is not None:
                 if objs[i] in mu:
-                    zeros = torch.from_numpy(np.random.multivariate_normal(mu[objs[i]], cov[objs[i]], 1)).float().cuda()
+                    zeros = (
+                        torch.from_numpy(
+                            np.random.multivariate_normal(mu[objs[i]], cov[objs[i]], 1)
+                        )
+                        .float()
+                        .cuda()
+                    )
                 else:
-                    zeros = torch.from_numpy(np.random.multivariate_normal(mu[-1], cov[-1], 1)).float().cuda()
+                    zeros = (
+                        torch.from_numpy(
+                            np.random.multivariate_normal(mu[-1], cov[-1], 1)
+                        )
+                        .float()
+                        .cuda()
+                    )
             else:
                 zeros = torch.from_numpy(noise.reshape(1, z.shape[1]))
             zeros.requires_grad = True
@@ -83,7 +95,7 @@ class ShapeMLP(nn.Module):
         mu, logvar = self.encoder(objs, shapes)
 
         # reparameterization
-        std = torch.exp(0.5*logvar)
+        std = torch.exp(0.5 * logvar)
         # standard sampling
         eps = torch.randn_like(std)
         z = eps.mul(std).add_(mu)
@@ -94,26 +106,41 @@ class ShapeMLP(nn.Module):
         for i in range(len(objs)):
             keep.append(1)
 
-
         return mu, logvar, pred, keep
 
-    def sampleShape(self, point_classes_idx, dec_objs, point_ae, mean_est_shape, cov_est_shape):
+    def sampleShape(
+        self, point_classes_idx, dec_objs, point_ae, mean_est_shape, cov_est_shape
+    ):
         with torch.no_grad():
             z_shape = []
             for idxz in dec_objs:
                 idxz = int(idxz.cpu())
                 if idxz in point_classes_idx:
-                    z_shape.append(torch.from_numpy(
-                        np.random.multivariate_normal(mean_est_shape[idxz], cov_est_shape[idxz],
-                                                      1)).float().cuda())
+                    z_shape.append(
+                        torch.from_numpy(
+                            np.random.multivariate_normal(
+                                mean_est_shape[idxz], cov_est_shape[idxz], 1
+                            )
+                        )
+                        .float()
+                        .cuda()
+                    )
                 else:
-                    z_shape.append(torch.from_numpy(np.random.multivariate_normal(mean_est_shape[-1],
-                                                                                  cov_est_shape[-1],
-                                                                                  1)).float().cuda())
+                    z_shape.append(
+                        torch.from_numpy(
+                            np.random.multivariate_normal(
+                                mean_est_shape[-1], cov_est_shape[-1], 1
+                            )
+                        )
+                        .float()
+                        .cuda()
+                    )
             z_shape = torch.cat(z_shape, 0)
 
             dc_shapes = self.decoder(z_shape, dec_objs)
-            points = point_ae.forward_inference_from_latent_space(dc_shapes, point_ae.get_grid())
+            points = point_ae.forward_inference_from_latent_space(
+                dc_shapes, point_ae.get_grid()
+            )
         return points, dc_shapes
 
     def collect_train_statistics(self, train_loader):
@@ -129,17 +156,19 @@ class ShapeMLP(nn.Module):
                 continue
 
             try:
-                objs, triples, tight_boxes,  objs_to_scene, triples_to_scene = data['encoder']['objs'], \
-                                                                               data['encoder']['tripltes'], \
-                                                                               data['encoder']['boxes'], \
-                                                                               data['encoder']['obj_to_scene'], \
-                                                                               data['encoder']['triple_to_scene']
+                objs, triples, tight_boxes, objs_to_scene, triples_to_scene = (
+                    data["encoder"]["objs"],
+                    data["encoder"]["triples"],
+                    data["encoder"]["boxes"],
+                    data["encoder"]["obj_to_scene"],
+                    data["encoder"]["triple_to_scene"],
+                )
 
-                encoded_points = data['encoder']['feats']
+                encoded_points = data["encoder"]["feats"]
                 encoded_points = encoded_points.cuda()
 
             except Exception as e:
-                print('Exception', str(e))
+                print("Exception", str(e))
                 continue
 
             objs, triples, tight_boxes = objs.cuda(), triples.cuda(), tight_boxes.cuda()

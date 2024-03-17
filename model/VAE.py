@@ -13,6 +13,7 @@ from model.VAEGAN_V1BOX import Sg2ScVAEModel as v1_box
 from model.VAEGAN_V1FULL import Sg2ScVAEModel as v1_full
 from model.VAEGAN_V2BOX import Sg2ScVAEModel as v2_box
 from model.VAEGAN_V2FULL import Sg2ScVAEModel as v2_full
+# from model.VAEGAN_V3BOX import Sg2ScVAEModel as v3_box
 
 
 class VAE(nn.Module):
@@ -35,7 +36,9 @@ class VAE(nn.Module):
         clip=True,
         with_E2=True,
         device="cuda",
-        use_unit_box = False,
+        use_unit_box=False,
+        gat_heads=3,
+        num_gat_layers=2,
     ):
         super().__init__()
         assert type in [
@@ -43,6 +46,7 @@ class VAE(nn.Module):
             "v1_full",
             "v2_box",
             "v2_full",
+            "v3_box",
         ], "{} is not included".format(type)
 
         self.type_ = type
@@ -65,6 +69,9 @@ class VAE(nn.Module):
                 residual=residual,
                 gconv_pooling=gconv_pooling,
                 gconv_num_layers=5,
+                device=device,
+                use_unit_box=use_unit_box,
+                with_changes=with_changes,
             )
         elif self.type_ == "v1_full":
             self.classes_ = sorted(list(set(self.vocab["object_idx_to_name"])))
@@ -114,8 +121,8 @@ class VAE(nn.Module):
                 gconv_pooling=gconv_pooling,
                 gconv_num_layers=5,
                 device=device,
-                use_unit_box= use_unit_box,
-                with_changes= with_changes
+                use_unit_box=use_unit_box,
+                with_changes=with_changes,
             )
         elif self.type_ == "v2_full":
             self.diff_opt = diff_opt
@@ -142,12 +149,27 @@ class VAE(nn.Module):
                 device=device,
             )
             self.vae_v2.optimizer_ini()
+        elif self.type_ == "v3_box":
+            assert replace_latent is not None
+            self.vae_box = v3_box(
+                vocab,
+                embedding_dim=64,
+                decoder_cat=True,
+                mlp_normalization="batch",
+                input_dim=num_box_params,
+                replace_latent=replace_latent,
+                use_angles=with_angles,
+                gat_num_layers=num_gat_layers,
+                gat_type="egat",
+                gat_heads=gat_heads,  # test
+                device=device,
+                use_unit_box=use_unit_box,
+                with_changes=with_changes,
+            )
         self.counter = 0
 
     def set_cuda(self):
         self.vae_v2.set_cuda()
-    
-
 
     def forward_mani(
         self,
@@ -173,8 +195,8 @@ class VAE(nn.Module):
         dec_objs_to_scene,
         missing_nodes,
         manipulated_nodes,
-        enc_unit_box_gt = None,
-        dec_unit_box_gt = None,
+        enc_unit_box_gt=None,
+        dec_unit_box_gt=None,
     ):
 
         if self.type_ == "v1_full":
@@ -255,6 +277,8 @@ class VAE(nn.Module):
                 manipulated_nodes,
                 enc_angles,
                 dec_angles,
+                enc_unit_box_gt=enc_unit_box_gt,
+                dec_unit_box_gt=dec_unit_box_gt,
             )
 
             return (
@@ -304,8 +328,8 @@ class VAE(nn.Module):
                 manipulated_nodes,
                 enc_angles,
                 dec_angles,
-                enc_unit_box_gt = enc_unit_box_gt,
-                dec_unit_box_gt = dec_unit_box_gt
+                enc_unit_box_gt=enc_unit_box_gt,
+                dec_unit_box_gt=dec_unit_box_gt,
             )
 
             return (
@@ -377,12 +401,61 @@ class VAE(nn.Module):
                 obj_and_shape,
                 keep,
             )
+        elif self.type_ == "v3_box":
+            (
+                mu_boxes,
+                logvar_boxes,
+                orig_gt_boxes,
+                orig_gt_angles,
+                orig_boxes,
+                orig_angles,
+                boxes,
+                angles,
+                keep,
+            ) = self.vae_box.forward(
+                enc_objs,
+                enc_triples,
+                enc_boxes,
+                attributes,
+                encoded_enc_text_feat,
+                encoded_enc_rel_feat,
+                enc_objs_to_scene,
+                dec_objs,
+                dec_triples,
+                dec_boxes,
+                dec_attributes,
+                dec_objs_to_scene,
+                missing_nodes,
+                manipulated_nodes,
+                enc_angles,
+                dec_angles,
+                enc_unit_box_gt=enc_unit_box_gt,
+                dec_unit_box_gt=dec_unit_box_gt,
+            )
+
+            return (
+                mu_boxes,
+                logvar_boxes,
+                None,
+                None,
+                orig_gt_boxes,
+                orig_gt_angles,
+                None,
+                orig_boxes,
+                orig_angles,
+                None,
+                boxes,
+                angles,
+                None,
+                keep,
+            )
 
     def load_networks(self, exp, epoch, strict=True, restart_optim=False):
         if self.type_ == "v1_box":
             self.vae_box.load_state_dict(
                 torch.load(
-                    os.path.join(exp, "checkpoint", "model_box_{}.pth".format(epoch))
+                    os.path.join(exp, "checkpoint", "model_box_{}.pth".format(epoch)),
+                    map_location=self.device,
                 ),
                 strict=strict,
             )
@@ -395,7 +468,16 @@ class VAE(nn.Module):
         elif self.type_ == "v2_box":
             self.vae_box.load_state_dict(
                 torch.load(
-                    os.path.join(exp, "checkpoint", "model_box_{}.pth".format(epoch)),map_location=self.device
+                    os.path.join(exp, "checkpoint", "model_box_{}.pth".format(epoch)),
+                    map_location=self.device,
+                ),
+                strict=strict,
+            )
+        elif self.type_ == "v3_box":
+            self.vae_box.load_state_dict(
+                torch.load(
+                    os.path.join(exp, "checkpoint", "model_box_{}.pth".format(epoch)),
+                    map_location=self.device,
                 ),
                 strict=strict,
             )
@@ -469,6 +551,17 @@ class VAE(nn.Module):
                 pickle.dump(
                     [self.mean_est_box, self.cov_est_box], open(box_stats_f, "wb")
                 )
+        elif self.type_ == "v3_box":
+            if os.path.exists(box_stats_f) and not force:
+                stats = pickle.load(open(box_stats_f, "rb"))
+                self.mean_est_box, self.cov_est_box = stats[0], stats[1]
+            else:
+                self.mean_est_box, self.cov_est_box = (
+                    self.vae_box.collect_train_statistics(stats_dataloader)
+                )
+                pickle.dump(
+                    [self.mean_est_box, self.cov_est_box], open(box_stats_f, "wb")
+                )
 
         elif self.type_ == "v1_full":
             if os.path.exists(stats_f) and not force:
@@ -520,7 +613,7 @@ class VAE(nn.Module):
                 z_box, objs, triples, attributes, missing_nodes, manipulated_nodes
             )
             points, _ = self.decode_g2sv1(objs, feats, box_data, retrieval=True)
-        elif self.type_ == "v1_box" or self.type_ == "v2_box":
+        elif self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             boxes, keep = self.decoder_with_changes_boxes(
                 z_box,
                 objs,
@@ -560,7 +653,7 @@ class VAE(nn.Module):
         missing_nodes,
         manipulated_nodes,
     ):
-        if self.type_ == "v1_box" or self.type_ == "v2_box":
+        if self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             return self.vae_box.decoder_with_changes(
                 z,
                 objs,
@@ -594,10 +687,13 @@ class VAE(nn.Module):
         elif self.type_ == "v1_box":
             boxes, angles = self.decoder_boxes(z_box, objs, triples, attributes)
             points = None
+        elif self.type_ == "v3_box":
+            boxes, angles = self.decoder_boxes(z_box, objs, triples, attributes)
+            points = None
         return boxes, angles, points
 
     def decoder_boxes(self, z, objs, triples, attributes):
-        if self.type_ == "v1_box" or self.type_ == "v2_box":
+        if self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             if self.with_angles:
                 return self.vae_box.decoder(z, objs, triples, attributes)
             else:
@@ -624,7 +720,7 @@ class VAE(nn.Module):
                 z_box, objs, triples, attributes, missing_nodes, manipulated_nodes
             )
             return outs[:2], None, outs[2], keep
-        elif self.type_ == "v1_box" or self.type_ == "v2_box":
+        elif self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             boxes, keep = self.decoder_with_additions_boxs(
                 z_box,
                 objs,
@@ -665,7 +761,7 @@ class VAE(nn.Module):
         manipulated_nodes,
     ):
         boxes, angles, keep = None, None, None
-        if self.type_ == "v1_box" or self.type_ == "v2_box":
+        if self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             boxes, keep = self.vae_box.decoder_with_additions(
                 z,
                 objs,
@@ -695,7 +791,12 @@ class VAE(nn.Module):
     ):
         if not self.with_angles:
             angles = None
-        if self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v2_full":
+        if (
+            self.type_ == "v1_box"
+            or self.type_ == "v2_box"
+            or self.type_ == "v2_full"
+            or self.type_ == "v3_box"
+        ):
             return self.encode_box(
                 objs,
                 triples,
@@ -727,7 +828,7 @@ class VAE(nn.Module):
         attributes=None,
     ):
 
-        if self.type_ == "v1_box" or self.type_ == "v2_box":
+        if self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             z, log_var = self.vae_box.encoder(
                 objs,
                 triples,
@@ -829,7 +930,7 @@ class VAE(nn.Module):
         encoded_dec_rel_feat,
         attributes=None,
     ):
-        if self.type_ == "v1_box" or self.type_ == "v2_box":
+        if self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             return self.vae_box.sampleBoxes(
                 self.mean_est_box,
                 self.cov_est_box,
@@ -861,7 +962,7 @@ class VAE(nn.Module):
             )[1]
 
     def save(self, exp, outf, epoch, counter=None):
-        if self.type_ == "v1_box" or self.type_ == "v2_box":
+        if self.type_ == "v1_box" or self.type_ == "v2_box" or self.type_ == "v3_box":
             torch.save(
                 self.vae_box.state_dict(),
                 os.path.join(exp, outf, "model_box_{}.pth".format(epoch)),

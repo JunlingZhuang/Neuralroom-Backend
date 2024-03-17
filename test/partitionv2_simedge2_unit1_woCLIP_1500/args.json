@@ -1,0 +1,35 @@
+{
+  "lr": 0.0001,
+  "exp": "test/partitionv2_simedge2_unit1_woCLIP_1500",
+  "logf": "logs",
+  "outf": "checkpoint",
+  "nepoch": 401,
+  "device": "cuda",
+  "path2sdf": "./SGFRONT/GT/DEEPSDF_reconstruction",
+  "large": false,
+  "batchSize": 8,
+  "with_SDF": false,
+  "with_CLIP": false,
+  "with_feats": false,
+  "with_changes": true,
+  "dataset": "test/partitionv2_simedge2_unit1_woCLIP_1500_GT",
+  "residual": true,
+  "network_type": "v1_box",
+  "manualSeed": 7484,
+  "loadmodel": false,
+  "weight_D_box": 0.1,
+  "auxlr": 0.0001,
+  "num_box_params": 6,
+  "data_list": "test/partitionv2_simedge2_unit1_woCLIP_1500_GT/1500_combined.txt",
+  "use_unit_box": "preGNN",
+  "unit_box_mean": [
+    9.803231245551602,
+    2.6567966548042365,
+    9.854207784697499
+  ],
+  "unit_box_std": [
+    3.144648304019489,
+    0.1437735361243492,
+    3.0631562470766927
+  ]
+}

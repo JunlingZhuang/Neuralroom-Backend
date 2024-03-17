@@ -93,10 +93,14 @@ class GraphTripleConv(nn.Module):
     def __init__(self, input_dim_obj, input_dim_pred, output_dim=None, hidden_dim=512,
                              pooling='avg', mlp_normalization='none', residual=True):
         super(GraphTripleConv, self).__init__()
-        if output_dim is None:
-            output_dim = input_dim_obj
+        self.output_dim_obj = output_dim if output_dim is not None else input_dim_obj
+        self.output_dim_pred = input_dim_pred
         self.input_dim_obj = input_dim_obj
         self.input_dim_pred = input_dim_pred
+        
+        if output_dim is None:
+            output_dim = input_dim_obj
+            
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
 
@@ -105,7 +109,7 @@ class GraphTripleConv(nn.Module):
         assert pooling in ['sum', 'avg', 'wAvg'], 'Invalid pooling "%s"' % pooling
 
         self.pooling = pooling
-        net1_layers = [2 * input_dim_obj + input_dim_pred, hidden_dim, 2 * hidden_dim + output_dim]
+        net1_layers = [2 * input_dim_obj + input_dim_pred, hidden_dim, 2 * hidden_dim + self.output_dim_pred]
         net1_layers = [l for l in net1_layers if l is not None]
         self.net1 = build_mlp(net1_layers, batch_norm=mlp_normalization)
         self.net1.apply(_init_weights)
@@ -115,8 +119,8 @@ class GraphTripleConv(nn.Module):
         self.net2.apply(_init_weights)
 
         if self.residual:
-            self.linear_projection = nn.Linear(input_dim_obj, output_dim)
-            self.linear_projection_pred = nn.Linear(input_dim_pred, output_dim)
+            self.linear_projection = nn.Linear(input_dim_obj, self.output_dim_obj)
+            self.linear_projection_pred = nn.Linear(input_dim_pred, self.output_dim_pred)
 
         if self.pooling == 'wAvg':
             self.weightNet = WeightNetGCN(hidden_dim, output_dim, 128)
@@ -136,7 +140,7 @@ class GraphTripleConv(nn.Module):
 
         dtype, device = obj_vecs.dtype, obj_vecs.device
         num_objs, num_triples = obj_vecs.size(0), pred_vecs.size(0)
-        Din_obj, Din_pred, H, Dout = self.input_dim_obj, self.input_dim_pred, self.hidden_dim, self.output_dim
+        Din_obj, Din_pred, H, Dout,Predout_dim = self.input_dim_obj, self.input_dim_pred, self.hidden_dim, self.output_dim,self.output_dim_pred
 
         # Break apart indices for subjects and objects; these have shape (num_triples,)
         s_idx = edges[:, 0].contiguous()
@@ -154,8 +158,8 @@ class GraphTripleConv(nn.Module):
         # Break apart into new s, p, and o vecs; s and o vecs have shape (num_triples, H) and
         # p vecs have shape (num_triples, Dout)
         new_s_vecs = new_t_vecs[:, :H]
-        new_p_vecs = new_t_vecs[:, H:(H+Dout)]
-        new_o_vecs = new_t_vecs[:, (H+Dout):(2 * H + Dout)]
+        new_p_vecs = new_t_vecs[:, H:(H+Predout_dim)]
+        new_o_vecs = new_t_vecs[:, (H+Predout_dim):(2 * H + Predout_dim)]
  
         # Allocate space for pooled object vectors of shape (num_objs, H)
         pooled_obj_vecs = torch.zeros(num_objs, H, dtype=dtype, device=device)
@@ -203,9 +207,7 @@ class GraphTripleConv(nn.Module):
         new_obj_vecs = self.net2(pooled_obj_vecs)
 
         if self.residual:
-            projected_obj_vecs = self.linear_projection(obj_vecs)
-            new_obj_vecs = new_obj_vecs + projected_obj_vecs
-            # new
+            new_obj_vecs = new_obj_vecs + self.linear_projection(obj_vecs)
             new_p_vecs = new_p_vecs + self.linear_projection_pred(pred_vecs)
 
         return new_obj_vecs, new_p_vecs
