@@ -41,6 +41,8 @@ def happy():
 def generate_model():
     print("generate_model")
     data = request.get_json()
+    nodesData = data.get('nodes')
+    edgesData = data.get('edges')
     length = data.get('length')
     height = data.get('height')
     width = data.get('width')
@@ -50,6 +52,8 @@ def generate_model():
     width = float(width) if width is not None else 0.0
 
     print(length, height, width)
+    print("Nodes Data received",nodesData)
+    print("Edges Data received",edgesData)
     model_file_path = generate_queried_unit_mesh(
         queried_idx=0,
         unit_box = [length,height,width],
