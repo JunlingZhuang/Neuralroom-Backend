@@ -55,9 +55,9 @@ def generate_model():
     print("Nodes Data received",nodesData)
     print("Edges Data received",edgesData)
     model_file_path = generate_queried_unit_mesh(
-        queried_idx=0,
+        input_objs=nodesData,
+        input_triples = edgesData,
         unit_box = [length,height,width],
-        args_location="./test/partitionv2_simedge2_unit1_woCLIP_1500/args.json",
         args=args,
         model=model,
         train_dataset=dataset,

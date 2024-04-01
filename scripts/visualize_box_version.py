@@ -2,6 +2,7 @@ import json
 import os
 import random
 import sys
+import copy
 
 
 import numpy as np
@@ -24,7 +25,8 @@ from helpers.viz_util import (
     export_scene_meshes,
     force_room_adjacency,
     render_plotly_sdf,
-    rel_to_abs_box_params
+    rel_to_abs_box_params,
+    ROOM_HIER_MAP
 )
 from model.VAE import VAE
 from helpers.visualize_graph import visualize_scene_graph
@@ -241,11 +243,82 @@ def rationalize_box_params(
 
     return box_points, denormalized_boxes, angles_pred
 
+def create_data_dic(objs, triples, dataset, unit_box=[6.0, 3.0, 6.0], norm_scale=1):
+    data = {}
 
-def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test/partition_emb_box_250/args.json",args=None,model=None,train_dataset=None):
-    '''
-    input queried index at dataset, and the custom unit_box(optional), generate the unit mesh
-    '''
+
+
+    # compute pidx
+    obj_to_pidx = list(range(len(objs)))
+    obj_name2idx = dataset.classes  # {class label : index}
+    room_idxs = [obj_name2idx.get(key) for key in list(ROOM_HIER_MAP.keys())]
+    for triple in triples:
+        sub, pred, obj = triple
+        sub_idx = int(objs[int(sub)])
+        obj_idx = int(objs[int(obj)])
+        fur_idx = None
+        room_idx = None
+        if sub_idx in room_idxs and obj_idx not in room_idxs:
+            room_idx = sub
+            fur_idx = obj
+        elif sub_idx not in room_idxs and obj_idx in room_idxs:
+            room_idx = obj
+            fur_idx = sub
+        if fur_idx and room_idx:
+            obj_to_pidx[fur_idx] = room_idx
+
+    # create grained objs
+    objs_grained = []
+    for obj in objs:
+        label = dataset.classes_r[int(obj)]
+        grained_id = dataset.fine_grained_classes[label]
+        objs_grained.append(grained_id)
+
+    # add scene node
+    scene_idx = len(objs)
+    for i, obj in enumerate(objs):
+        # check if it is a room node
+        if obj_to_pidx[i] == i:
+            triples.append([i, 0, scene_idx])
+
+    objs.append(0)
+    objs_grained.append(0)
+    obj_to_pidx.append(scene_idx)
+
+    # prepare unit_box
+    num_objs = len(objs)
+    unit_box_mean = dataset.unit_box_mean
+    unit_box_std = dataset.unit_box_std
+    unit_box = norm_scale * (unit_box - unit_box_mean) / unit_box_std
+    unit_box = torch.from_numpy(np.array(unit_box).astype(np.float32))
+    unit_box = unit_box.unsqueeze(0).repeat(num_objs, 1)
+
+    # torchify
+    data["encoder"] = {}
+    data["encoder"]["objs"] = torch.from_numpy(np.array(objs).astype(np.int64))
+    data["encoder"]["objs_grained"] = torch.from_numpy(np.array(objs_grained).astype(np.int64))
+    data["encoder"]["triples"] = torch.from_numpy(np.array(triples).astype(np.int64))
+    data["encoder"]["obj_to_pidx"] = torch.from_numpy(
+        np.array(obj_to_pidx).astype(np.int64)
+    )
+    data["encoder"]["unit_box"] = torch.from_numpy(
+        np.array(unit_box).astype(np.float32)
+    )
+    data["decoder"] = copy.deepcopy(data["encoder"])
+
+    return data
+
+def generate_queried_unit_mesh(
+    input_objs = None,
+    input_triples = None,
+    unit_box=None,
+    args=None,
+    model=None,
+    train_dataset=None,
+):
+    """
+    input nodes, edges, and the custom unit_box(optional), generate the unit mesh
+    """
     bbox_file = os.path.join(args["dataset"], "cat_jid_all.json")
     with open(bbox_file, "r") as read_file:
         box_data = json.load(read_file)
@@ -265,7 +338,7 @@ def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test
     device = args['device']
 
     # parse data
-    data = train_dataset[queried_idx]
+    data = create_data_dic(input_objs,input_triples,train_dataset)
     dec_objs_grained = data["decoder"]["objs_grained"]
     dec_objs = data["decoder"]["objs"]
     dec_triples = data["decoder"]["triples"]
@@ -312,7 +385,7 @@ def generate_queried_unit_mesh(queried_idx=0,unit_box=None,args_location="./test
         ceiling_and_floor= False # no ceiling floors
     )
     exp_dir = os.path.join(args['exp'],'mesh')
-    mesh_name = f'{data["scan_id"]}.obj'
+    mesh_name = '{}.obj'.format(data.get("scan_id", "test"))
     exp_path = os.path.join(exp_dir,mesh_name)
     if not os.path.exists(exp_dir):
         os.makedirs(exp_dir,exist_ok = True)
