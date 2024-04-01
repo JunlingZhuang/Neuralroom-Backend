@@ -50,10 +50,16 @@ def generate_model():
     width = float(width) if width is not None else 0.0
 
     print(length, height, width)
+
+    # get graph data
+    objs = data.get('nodes')
+    triples = data.get('edges')
+
+    print(objs,triples)
     model_file_path = generate_queried_unit_mesh(
-        queried_idx=0,
+        input_objs=objs,
+        input_triples=triples,
         unit_box = [length,height,width],
-        args_location="./test/partitionv2_simedge2_unit1_woCLIP_1500/args.json",
         args=args,
         model=model,
         train_dataset=dataset,
