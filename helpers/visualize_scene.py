@@ -1,16 +1,16 @@
 import os
 
-import open3d as o3d
+# import open3d as o3d
 import numpy as np
 import trimesh
 
 from helpers.util import fit_shapes_to_box, params_to_8points, params_to_8points_no_rot, params_to_8points_3dfront, get_textured_objects_v2, get_sdfusion_models, get_bbox, get_generated_models_v1, get_generated_models_v2, trimeshes_to_pytorch3d, normalize_py3d_meshes
 import json
 import torch
-import cv2
-import pyrender
-from render.lineMesh import LineMesh
-import seaborn as sns
+# import cv2
+# import pyrender
+# from render.lineMesh import LineMesh
+# import seaborn as sns
 from collections import OrderedDict
 from model.diff_utils.util import tensor2im
 from model.diff_utils.util_3d import render_sdf, render_meshes, sdf_to_mesh

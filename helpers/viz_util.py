@@ -3,7 +3,7 @@ import yaml
 import trimesh
 import os
 import random
-import open3d as o3d
+# import open3d as o3d
 import numpy as np
 from helpers.util import (
     fit_shapes_to_box_3dfront,
@@ -11,12 +11,12 @@ from helpers.util import (
 )
 from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
-import json
+# import json
 import torch
 import plotly.graph_objects as go
-import plotly.express as px
-import pyrender
-import imageio
+# import plotly.express as px
+# import pyrender
+# import imageio
 from PIL import Image
 
 # courtyard>service>storage>bathroom>bedroom>library>kitchen>diningroom>balcony>circulation>livingroom

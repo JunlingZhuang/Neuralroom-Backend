@@ -9,17 +9,12 @@ import os.path
 import torch
 import numpy as np
 import copy
-from tqdm import tqdm
 import json
 from helpers.psutil import FreeMemLinux, FreeMem
 from helpers.util import normalize_box_params
-from omegaconf import OmegaConf
-import clip
 import random
 import pickle
 import trimesh
-import h5py
-import open3d as o3d
 
 changed_relationships_dict = {
     "left": "right",

@@ -6,10 +6,10 @@ import trimesh
 import json
 import glob
 import random
-import pytorch3d
-from pytorch3d.structures import Meshes
+# import pytorch3d
+# from pytorch3d.structures import Meshes
 
-from model.diff_utils.util_3d import sdf_to_mesh
+# from model.diff_utils.util_3d import sdf_to_mesh
 
 
 def fit_shapes_to_box_3dfront(obj, box, degrees=False):
